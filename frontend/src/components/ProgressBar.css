@@ -1,0 +1,154 @@
+/* Copyright (c) 2025 SNF-AI */
+/* SPDX-License-Identifier: MIT */
+
+.progress-container {
+  width: 100%;
+  margin: 10px 0;
+  font-family: 'Roboto', sans-serif;
+}
+
+.progress-bar {
+  height: 8px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00a8ff, #00e0ff);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  position: relative;
+  box-shadow: 0 0 8px rgba(0, 168, 255, 0.5);
+}
+
+.progress-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.progress-percent {
+  font-weight: bold;
+}
+
+.progress-tokens {
+  font-family: 'Courier New', monospace;
+}
+
+/* Animation for indeterminate state */
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+.progress-fill.indeterminate {
+  animation: pulse 1.5s infinite;
+  width: 100%;
+  background: linear-gradient(90deg, rgba(0, 168, 255, 0.3), rgba(0, 224, 255, 0.7));
+}
+
+/* Pipeline mode styling */
+.pipeline-indicator {
+  margin: 15px 0;
+  padding: 10px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pipeline-stages {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.pipeline-stage {
+  flex: 1;
+  text-align: center;
+  padding: 8px;
+  margin: 0 5px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  font-size: 12px;
+  position: relative;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.pipeline-stage:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  right: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.pipeline-stage.active {
+  background-color: rgba(0, 168, 255, 0.2);
+  color: #00a8ff;
+  font-weight: bold;
+  box-shadow: 0 0 10px rgba(0, 168, 255, 0.3);
+  border: 1px solid rgba(0, 168, 255, 0.3);
+}
+
+.pipeline-stage.completed {
+  background-color: rgba(0, 255, 128, 0.1);
+  color: rgba(0, 255, 128, 0.8);
+  border: 1px solid rgba(0, 255, 128, 0.2);
+}
+
+.pipeline-progress {
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: bold;
+}
+
+/* Processing node indicator */
+.processing-node {
+  margin: 10px 0;
+  padding: 8px 12px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  border-left: 3px solid #00a8ff;
+}
+
+.node-name {
+  margin-left: 5px;
+  font-weight: bold;
+  color: #00a8ff;
+}
+
+/* Stream progress */
+.stream-progress {
+  margin: 15px 0;
+}
+
+/* Cancel button styling */
+.cancel-button {
+  margin-top: 10px;
+  padding: 6px 12px;
+  background-color: rgba(255, 70, 70, 0.2);
+  color: rgba(255, 70, 70, 0.9);
+  border: 1px solid rgba(255, 70, 70, 0.3);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.cancel-button:hover {
+  background-color: rgba(255, 70, 70, 0.3);
+  color: rgba(255, 70, 70, 1);
+}

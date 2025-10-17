@@ -1,0 +1,426 @@
+// RAG Manager Component for Twhyne AI
+import React, { useState, useEffect } from 'react';
+import {
+  FaDatabase,
+  FaUpload,
+  FaPlus,
+  FaTrash,
+  FaEdit,
+  FaSearch,
+  FaFileAlt,
+  FaFilePdf,
+  FaFileCsv,
+  FaFileCode,
+  FaCheck,
+  FaTimes,
+  FaRobot,
+  FaDownload
+} from 'react-icons/fa';
+import axios from 'axios';
+
+const RAGManager = ({ onNodeCreated }) => {
+  const [showManager, setShowManager] = useState(false);
+  const [datasets, setDatasets] = useState([]);
+  const [selectedDataset, setSelectedDataset] = useState(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [datasetName, setDatasetName] = useState('');
+  const [datasetDescription, setDatasetDescription] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [ragStatus, setRagStatus] = useState(null);
+
+  useEffect(() => {
+    if (showManager) {
+      loadDatasets();
+      checkRAGStatus();
+    }
+  }, [showManager]);
+
+  const checkRAGStatus = async () => {
+    try {
+      const response = await axios.get('http://localhost:5002/api/rag/status');
+      setRagStatus(response.data);
+    } catch (error) {
+      console.error('Error checking RAG status:', error);
+      setRagStatus({ available: false });
+    }
+  };
+
+  const loadDatasets = async () => {
+    try {
+      const response = await axios.get('http://localhost:5002/api/rag/datasets');
+      setDatasets(response.data.datasets || []);
+    } catch (error) {
+      console.error('Error loading datasets:', error);
+      setDatasets([]);
+    }
+  };
+
+  const handleFileUpload = (event) => {
+    const files = Array.from(event.target.files);
+    const readers = [];
+
+    files.forEach(file => {
+      const reader = new FileReader();
+      readers.push(
+        new Promise((resolve) => {
+          reader.onload = (e) => {
+            const content = e.target.result;
+            const isBase64 = file.type === 'application/pdf';
+            
+            resolve({
+              filename: file.name,
+              type: getFileType(file.name),
+              content: isBase64 ? btoa(content) : content,
+              encoding: isBase64 ? 'base64' : 'utf-8',
+              size: file.size
+            });
+          };
+
+          if (file.type === 'application/pdf') {
+            reader.readAsBinaryString(file);
+          } else {
+            reader.readAsText(file);
+          }
+        })
+      );
+    });
+
+    Promise.all(readers).then(fileData => {
+      setUploadedFiles(prev => [...prev, ...fileData]);
+    });
+  };
+
+  const getFileType = (filename) => {
+    const ext = filename.split('.').pop().toLowerCase();
+    switch (ext) {
+      case 'pdf': return 'pdf';
+      case 'csv': return 'csv';
+      case 'json': return 'json';
+      case 'md': return 'markdown';
+      case 'txt': return 'text';
+      default: return 'text';
+    }
+  };
+
+  const getFileIcon = (type) => {
+    switch (type) {
+      case 'pdf': return <FaFilePdf className="file-icon pdf" />;
+      case 'csv': return <FaFileCsv className="file-icon csv" />;
+      case 'json': return <FaFileCode className="file-icon json" />;
+      default: return <FaFileAlt className="file-icon text" />;
+    }
+  };
+
+  const createDataset = async () => {
+    if (!datasetName || uploadedFiles.length === 0) {
+      alert('Please provide a name and upload at least one file');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await axios.post('http://localhost:5002/api/rag/datasets', {
+        name: datasetName,
+        description: datasetDescription,
+        files: uploadedFiles
+      });
+
+      if (response.data.success) {
+        alert(`Dataset "${datasetName}" created successfully!`);
+        loadDatasets();
+        resetCreateForm();
+        
+        // Notify parent component about new node
+        if (onNodeCreated) {
+          onNodeCreated(response.data.dataset);
+        }
+      }
+    } catch (error) {
+      console.error('Error creating dataset:', error);
+      alert('Failed to create dataset: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const deleteDataset = async (datasetId) => {
+    if (!window.confirm('Are you sure you want to delete this dataset?')) return;
+
+    try {
+      await axios.delete(`http://localhost:5002/api/rag/datasets/${datasetId}`);
+      loadDatasets();
+      if (selectedDataset?.id === datasetId) {
+        setSelectedDataset(null);
+      }
+    } catch (error) {
+      console.error('Error deleting dataset:', error);
+      alert('Failed to delete dataset');
+    }
+  };
+
+  const searchDataset = async () => {
+    if (!selectedDataset || !searchQuery) return;
+
+    setIsLoading(true);
+    try {
+      const response = await axios.post(
+        `http://localhost:5002/api/rag/datasets/${selectedDataset.id}/search`,
+        { query: searchQuery, top_k: 5 }
+      );
+      setSearchResults(response.data.results || []);
+    } catch (error) {
+      console.error('Error searching dataset:', error);
+      setSearchResults([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resetCreateForm = () => {
+    setIsCreating(false);
+    setDatasetName('');
+    setDatasetDescription('');
+    setUploadedFiles([]);
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  return (
+    <>
+      {/* Toggle Button */}
+      <button
+        className="rag-toggle"
+        onClick={() => setShowManager(!showManager)}
+        title="RAG Knowledge Manager"
+      >
+        <FaDatabase />
+        {datasets.length > 0 && (
+          <span className="rag-count">{datasets.length}</span>
+        )}
+      </button>
+
+      {/* Manager Panel */}
+      <div className={`rag-manager ${showManager ? 'open' : ''}`}>
+        <div className="rag-header">
+          <h3>
+            <FaDatabase /> Knowledge Bases
+          </h3>
+          <button className="close-btn" onClick={() => setShowManager(false)}>
+            <FaTimes />
+          </button>
+        </div>
+
+        {/* RAG Status */}
+        {ragStatus && !ragStatus.available && (
+          <div className="rag-warning">
+            ⚠️ RAG system not fully available. Install required packages for full functionality.
+          </div>
+        )}
+
+        {/* Main Content */}
+        <div className="rag-content">
+          {!isCreating && !selectedDataset ? (
+            // Dataset List View
+            <>
+              <div className="rag-actions">
+                <button onClick={() => setIsCreating(true)} className="create-btn">
+                  <FaPlus /> Create New Knowledge Base
+                </button>
+              </div>
+
+              <div className="dataset-list">
+                {datasets.length === 0 ? (
+                  <div className="empty-state">
+                    <FaDatabase />
+                    <p>No knowledge bases yet</p>
+                    <small>Create one to enable custom RAG nodes</small>
+                  </div>
+                ) : (
+                  datasets.map(dataset => (
+                    <div key={dataset.id} className="dataset-item">
+                      <div className="dataset-info" onClick={() => setSelectedDataset(dataset)}>
+                        <div className="dataset-header">
+                          <FaRobot className="dataset-icon" />
+                          <div>
+                            <div className="dataset-name">{dataset.name}</div>
+                            <div className="dataset-meta">
+                              {dataset.document_count} documents
+                              {dataset.is_available && (
+                                <span className="status-badge online">Active</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="dataset-actions">
+                        <button onClick={() => deleteDataset(dataset.id)} title="Delete">
+                          <FaTrash />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          ) : isCreating ? (
+            // Create Dataset View
+            <div className="create-dataset">
+              <div className="create-header">
+                <button onClick={resetCreateForm} className="back-btn">
+                  ← Back
+                </button>
+                <h4>Create Knowledge Base</h4>
+              </div>
+
+              <div className="create-form">
+                <div className="form-group">
+                  <label>Name *</label>
+                  <input
+                    type="text"
+                    value={datasetName}
+                    onChange={(e) => setDatasetName(e.target.value)}
+                    placeholder="e.g., Product Documentation"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Description</label>
+                  <textarea
+                    value={datasetDescription}
+                    onChange={(e) => setDatasetDescription(e.target.value)}
+                    placeholder="Describe the knowledge base..."
+                    rows="3"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Upload Files *</label>
+                  <div className="file-upload-area">
+                    <input
+                      type="file"
+                      id="rag-file-upload"
+                      multiple
+                      accept=".txt,.pdf,.json,.csv,.md,.docx,.html,.xml"
+                      onChange={handleFileUpload}
+                      style={{ display: 'none' }}
+                    />
+                    <label htmlFor="rag-file-upload" className="upload-label">
+                      <FaUpload />
+                      <span>Click to upload files</span>
+                      <small>Supported: TXT, PDF, JSON, CSV, MD</small>
+                    </label>
+                  </div>
+
+                  {uploadedFiles.length > 0 && (
+                    <div className="uploaded-files">
+                      {uploadedFiles.map((file, index) => (
+                        <div key={index} className="uploaded-file">
+                          {getFileIcon(file.type)}
+                          <span className="file-name">{file.filename}</span>
+                          <span className="file-size">{formatFileSize(file.size)}</span>
+                          <button
+                            onClick={() => setUploadedFiles(prev => 
+                              prev.filter((_, i) => i !== index)
+                            )}
+                          >
+                            <FaTimes />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="form-actions">
+                  <button 
+                    onClick={createDataset} 
+                    disabled={isLoading || !datasetName || uploadedFiles.length === 0}
+                    className="primary-btn"
+                  >
+                    {isLoading ? 'Creating...' : 'Create Knowledge Base'}
+                  </button>
+                  <button onClick={resetCreateForm} className="secondary-btn">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : selectedDataset ? (
+            // Dataset Detail View
+            <div className="dataset-detail">
+              <div className="detail-header">
+                <button onClick={() => setSelectedDataset(null)} className="back-btn">
+                  ← Back
+                </button>
+                <h4>{selectedDataset.name}</h4>
+              </div>
+
+              <div className="dataset-stats">
+                <div className="stat">
+                  <span className="stat-label">Documents</span>
+                  <span className="stat-value">{selectedDataset.document_count}</span>
+                </div>
+                <div className="stat">
+                  <span className="stat-label">Status</span>
+                  <span className={`status-badge ${selectedDataset.is_available ? 'online' : 'offline'}`}>
+                    {selectedDataset.is_available ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+              </div>
+
+              {selectedDataset.description && (
+                <div className="dataset-description">
+                  {selectedDataset.description}
+                </div>
+              )}
+
+              <div className="search-section">
+                <h5>Search Knowledge Base</h5>
+                <div className="search-bar">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Enter search query..."
+                    onKeyPress={(e) => e.key === 'Enter' && searchDataset()}
+                  />
+                  <button onClick={searchDataset} disabled={isLoading}>
+                    <FaSearch />
+                  </button>
+                </div>
+
+                {searchResults.length > 0 && (
+                  <div className="search-results">
+                    <h5>Results</h5>
+                    {searchResults.map((result, index) => (
+                      <div key={index} className="search-result">
+                        <div className="result-title">{result.title}</div>
+                        <div className="result-content">{result.content.substring(0, 200)}...</div>
+                        <div className="result-score">Score: {result.score.toFixed(2)}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="dataset-actions-bottom">
+                <button onClick={() => deleteDataset(selectedDataset.id)} className="danger-btn">
+                  <FaTrash /> Delete Knowledge Base
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
+};
+
+export default RAGManager;

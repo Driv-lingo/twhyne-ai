@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SNF-AI API Direct Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #0f1419; color: #e6e6e6; }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+        .loading { color: #3b82f6; }
+        pre { background: #1f2937; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        button { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 5px; }
+        button:hover { background: #2563eb; }
+    </style>
+</head>
+<body>
+    <h1>SNF-AI API Direct Connection Test</h1>
+    <p>This page tests direct API connectivity bypassing React.</p>
+    
+    <button onclick="testAPI()">Test API Connection</button>
+    <button onclick="testCORS()">Test CORS Preflight</button>
+    <button onclick="clearResults()">Clear Results</button>
+    
+    <div id="results"></div>
+
+    <script>
+        const resultsDiv = document.getElementById('results');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'loading' ? 'loading' : '';
+            resultsDiv.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        }
+        
+        function clearResults() {
+            resultsDiv.innerHTML = '';
+        }
+        
+        async function testAPI() {
+            log('🔄 Testing API connection...', 'loading');
+            
+            try {
+                // Test the exact endpoint the React app is trying to use
+                const url = 'http://127.0.0.1:5001/api/v1/nodes/status';
+                log(`📡 Fetching: ${url}`);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                log(`📊 Response Status: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                log(`📋 Response Headers: ${JSON.stringify([...response.headers.entries()])}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                log('✅ API Response received successfully!', 'success');
+                log(`📈 Nodes found: ${data.nodes ? data.nodes.length : 'N/A'}`);
+                log(`🔗 Online nodes: ${data.online_nodes || 'N/A'}`);
+                
+                // Display the actual response data
+                log('📄 Full Response Data:');
+                resultsDiv.innerHTML += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                
+            } catch (error) {
+                log(`❌ API Test Failed: ${error.message}`, 'error');
+                log(`🔍 Error Details: ${error.stack || 'No stack trace available'}`, 'error');
+                
+                // Check if it's a CORS error
+                if (error.message.includes('CORS') || error.message.includes('cross-origin')) {
+                    log('🚫 This appears to be a CORS (Cross-Origin Resource Sharing) issue', 'error');
+                    log('💡 The server may not be properly configured to allow browser requests from this origin', 'error');
+                }
+                
+                // Check if it's a network error
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    log('🌐 This appears to be a network connectivity issue', 'error');
+                    log('💡 The server may not be running or may be blocked by firewall/antivirus', 'error');
+                }
+            }
+        }
+        
+        async function testCORS() {
+            log('🔄 Testing CORS preflight...', 'loading');
+            
+            try {
+                const url = 'http://127.0.0.1:5001/api/v1/nodes/status';
+                
+                // Make an OPTIONS request to test CORS preflight
+                const response = await fetch(url, {
+                    method: 'OPTIONS',
+                    headers: {
+                        'Origin': window.location.origin,
+                        'Access-Control-Request-Method': 'GET',
+                        'Access-Control-Request-Headers': 'Content-Type'
+                    }
+                });
+                
+                log(`🎯 CORS Preflight Status: ${response.status}`, response.ok ? 'success' : 'error');
+                
+                const corsHeaders = {
+                    'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin'),
+                    'Access-Control-Allow-Methods': response.headers.get('Access-Control-Allow-Methods'),
+                    'Access-Control-Allow-Headers': response.headers.get('Access-Control-Allow-Headers')
+                };
+                
+                log('🔐 CORS Headers:');
+                resultsDiv.innerHTML += `<pre>${JSON.stringify(corsHeaders, null, 2)}</pre>`;
+                
+            } catch (error) {
+                log(`❌ CORS Test Failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-run test on page load
+        window.addEventListener('load', () => {
+            log('🚀 Page loaded, ready for testing');
+            log(`📍 Current origin: ${window.location.origin}`);
+        });
+    </script>
+</body>
+</html>

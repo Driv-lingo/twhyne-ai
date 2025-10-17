@@ -1,0 +1,61 @@
+/* Copyright (c) 2025 SNF-AI */
+/* SPDX-License-Identifier: MIT */
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.react-flow__node {
+  border-radius: 5px;
+  border: 1px solid #ddd;
+  padding: 10px;
+  width: 150px;
+}
+
+.react-flow__node.selected {
+  box-shadow: 0 0 0 2px #4cc9f0;
+}
+
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background-color: #4cc9f0;
+}
+
+.react-flow__minimap {
+  background-color: #f8f9fa;
+}
+
+.react-flow__controls button {
+  background-color: white;
+  border: 1px solid #e0e0e0;
+  color: #666;
+}
+
+.react-flow__controls button:hover {
+  background-color: #f8f9fa;
+}
+
+.footer {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background: #f8f8fa;
+  color: #222;
+  text-align: center;
+  font-size: 14px;
+  padding: 8px 0;
+  border-top: 1px solid #eee;
+  z-index: 100;
+}
