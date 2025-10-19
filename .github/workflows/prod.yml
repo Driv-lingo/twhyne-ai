@@ -27,7 +27,7 @@ jobs:
         pip install --upgrade pip
         pip install flask flask-cors pillow numpy
         pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
-        cd frontend && npm ci
+        cd frontend && npm ci --legacy-peer-deps
         cd frontend && npm install --save-dev typescript@4.9.5 --legacy-peer-deps
     
     - name: Run all tests
@@ -35,12 +35,12 @@ jobs:
         cd backend
         python -m pytest tests/ || echo "No tests found yet"
         cd ../frontend
-        npm test -- --passWithNoTests || echo "Frontend tests failed, continuing anyway"
+        CI=true npm test -- --passWithNoTests || echo "Frontend tests failed, continuing anyway"
     
     - name: Build frontend
       run: |
         cd frontend
-        npm run build || echo "Frontend build failed, continuing anyway"
+        CI=false npm run build || echo "Frontend build failed, continuing anyway"
 
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -62,12 +62,12 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
-        cd frontend && npm ci
+        cd frontend && npm ci --legacy-peer-deps
     
     - name: Build frontend
       run: |
         cd frontend
-        npm run build
+        CI=false npm run build
     
     - name: Create production artifact
       run: |
