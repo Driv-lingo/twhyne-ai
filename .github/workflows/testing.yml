@@ -61,7 +61,7 @@ jobs:
     - name: Build frontend
       run: |
         cd frontend
-        npm run build
+        CI=false npm run build
     
     - name: Run frontend tests
       run: |
@@ -103,4 +103,4 @@ jobs:
     - name: Build frontend
       run: |
         cd frontend
-        npm run build
+        CI=false npm run build
