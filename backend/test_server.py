@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 def create_test_app():
     """Create a simplified Flask app for testing."""
     app = Flask(__name__)
-    CORS(app, origins=["http://localhost:3001", "http://127.0.0.1:3001"])
+    CORS(app, origins=["http://localhost:3001", "http://127.0.0.1:3001", "https://twhyne.com"])
     
     @app.route('/status', methods=['GET'])
     def status():
@@ -81,6 +81,14 @@ def create_test_app():
         </html>
         """
         return html
+    
+    @app.after_request
+    def add_cors_headers(response):
+        """Add CORS headers to every response."""
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        return response
     
     return app
 
