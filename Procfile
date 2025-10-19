@@ -1,1 +1,1 @@
-web: python backend/test_server.py
+web: cd backend && python test_server.py

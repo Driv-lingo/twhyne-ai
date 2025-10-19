@@ -47,11 +47,14 @@ def create_test_app():
     return app
 
 if __name__ == '__main__':
+    import os
+    port = int(os.environ.get('PORT', 5002))
+    
     print("=" * 60)
     print("🧪 Starting Test SNF-AI Server for CI")
-    print("📝 Status endpoint: http://localhost:5002/status")
-    print("🔧 API endpoint: http://localhost:5002/query")
+    print(f"📝 Status endpoint: http://localhost:{port}/status")
+    print(f"🔧 API endpoint: http://localhost:{port}/query")
     print("=" * 60)
     
     app = create_test_app()
-    app.run(host='0.0.0.0', port=5002, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)
