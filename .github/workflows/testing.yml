@@ -52,6 +52,7 @@ jobs:
       run: |
         cd frontend
         npm ci
+        npm install --save-dev jest jest-environment-jsdom @testing-library/react @testing-library/jest-dom
     
     - name: Run frontend linting
       run: |
