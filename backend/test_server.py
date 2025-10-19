@@ -85,7 +85,8 @@ def create_test_app():
     # Add CORS configuration for all endpoints
     @app.after_request
     def add_cors_headers(response):
-        """Add CORS headers to every response."""
+        """Add CORS headers to every response, ensuring no duplicates."""
+        response.headers.pop('Access-Control-Allow-Origin', None)  # Remove any existing header
         response.headers.add('Access-Control-Allow-Origin', 'https://twhyne.com')
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
@@ -96,6 +97,7 @@ def create_test_app():
     def register_options():
         """Handle CORS preflight for registration endpoint."""
         response = jsonify({'status': 'ok'})
+        response.headers.pop('Access-Control-Allow-Origin', None)  # Remove any existing header
         response.headers.add('Access-Control-Allow-Origin', 'https://twhyne.com')
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
@@ -105,6 +107,7 @@ def create_test_app():
     def validate_options():
         """Handle CORS preflight for validation endpoint."""
         response = jsonify({'status': 'ok'})
+        response.headers.pop('Access-Control-Allow-Origin', None)  # Remove any existing header
         response.headers.add('Access-Control-Allow-Origin', 'https://twhyne.com')
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
@@ -114,6 +117,7 @@ def create_test_app():
     def renew_options():
         """Handle CORS preflight for renewal endpoint."""
         response = jsonify({'status': 'ok'})
+        response.headers.pop('Access-Control-Allow-Origin', None)  # Remove any existing header
         response.headers.add('Access-Control-Allow-Origin', 'https://twhyne.com')
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
