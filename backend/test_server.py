@@ -5,7 +5,7 @@ This version doesn't load heavy model files and provides basic endpoints for tes
 """
 
 import logging
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 # Configure logging
@@ -81,6 +81,34 @@ def create_test_app():
         </html>
         """
         return html
+    
+    @app.route('/api/registration/register', methods=['POST'])
+    def register_user():
+        """Handle user registration and return a license key."""
+        try:
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
+            
+            email = data.get('email', '')
+            if not email:
+                return jsonify({'error': 'Email is required'}), 400
+            
+            # Generate a simple license key (in production, this would be more secure)
+            import uuid
+            license_key = f"SNF-{uuid.uuid4().hex[:8].upper()}"
+            
+            # In a real system, store this in a database
+            logger.info(f"Registered user with email: {email}, license key: {license_key}")
+            
+            return jsonify({
+                'success': True,
+                'license_key': license_key,
+                'message': 'Registration successful. Your license key is valid for 90 days.'
+            })
+        except Exception as e:
+            logger.error(f"Error in registration: {e}")
+            return jsonify({'error': f'Registration failed: {str(e)}'}), 500
     
     # Add CORS configuration for all endpoints
     @app.after_request
