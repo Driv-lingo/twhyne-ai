@@ -30,7 +30,7 @@ jobs:
         pip install flask flask-cors pillow numpy
         pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
         cd frontend && npm ci --legacy-peer-deps
-        cd frontend && npm install --save-dev typescript@4.9.5 --legacy-peer-deps
+        cd frontend && npm install --save-dev typescript@4.9.5 @testing-library/jest-dom @testing-library/react @testing-library/user-event jest-environment-jsdom --legacy-peer-deps
     
     - name: Run all tests
       run: |

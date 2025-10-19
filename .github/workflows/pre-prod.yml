@@ -34,12 +34,8 @@ jobs:
     
     - name: Install frontend dependencies
       run: |
-        cd frontend
-        npm ci --legacy-peer-deps
-    
-    - name: Build frontend
-      run: |
-        cd frontend
+        cd frontend && npm ci --legacy-peer-deps
+        cd frontend && npm install --save-dev typescript@4.9.5 @testing-library/jest-dom @testing-library/react @testing-library/user-event jest-environment-jsdom --legacy-peer-deps frontend
         CI=false npm run build
     
     - name: Run backend tests
