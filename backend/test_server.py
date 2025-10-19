@@ -44,6 +44,44 @@ def create_test_app():
             'status': 'success'
         })
     
+    @app.route('/download/<license_key>')
+    def download_page(license_key):
+        """Show download page after registration."""
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Download SNF-AI Windsurf</title>
+            <style>
+                body {{ font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #667eea, #764ba2); color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }}
+                .container {{ background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 20px; padding: 40px; max-width: 600px; text-align: center; }}
+                .license-key {{ font-family: monospace; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 5px; margin: 20px 0; }}
+                .download-btn {{ background: #4CAF50; color: white; border: none; padding: 15px 40px; font-size: 1.2em; border-radius: 50px; cursor: pointer; text-decoration: none; display: inline-block; margin: 20px 0; }}
+                .download-btn:hover {{ background: #45a049; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>✅ Registration Successful!</h1>
+                <p>Your License Key:</p>
+                <div class="license-key">{license_key}</div>
+                <p>Valid for 90 days</p>
+                <h2>Download Instructions</h2>
+                <p>The SNF-AI Windsurf executable is available at:</p>
+                <a href="https://github.com/Driv-lingo/twhyne-ai/releases/latest" class="download-btn">📥 Download from GitHub</a>
+                <ol style="text-align: left;">
+                    <li>Click the download button above</li>
+                    <li>Download SNF-AI-Windsurf-3.0.0.zip</li>
+                    <li>Extract and run Install.command</li>
+                    <li>Enter your license key when prompted</li>
+                </ol>
+                <p style="margin-top: 30px; font-size: 0.9em;">Keep your license key safe!</p>
+            </div>
+        </body>
+        </html>
+        """
+        return html
+    
     return app
 
 if __name__ == '__main__':
