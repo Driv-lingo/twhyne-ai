@@ -99,12 +99,38 @@ jobs:
     - name: Start backend server
       run: |
         cd backend
-        python server.py &
-        sleep 5
+        echo "Starting test backend server for CI..."
+        python test_server.py > server.log 2>&1 &
+        SERVER_PID=$!
+        echo "Server PID: $SERVER_PID"
+        sleep 10
+        echo "Checking if server is running..."
+        if ps -p $SERVER_PID > /dev/null; then
+          echo "Server process is running"
+        else
+          echo "Server process died, checking logs:"
+          cat server.log
+          exit 1
+        fi
     
     - name: Test backend health
       run: |
-        curl -f http://localhost:5002/status || exit 1
+        echo "Testing backend health..."
+        for i in {1..3}; do
+          echo "Attempt $i/3"
+          if curl -f -s http://localhost:5002/status; then
+            echo "✅ Backend health check passed"
+            echo "Testing API endpoint..."
+            curl -X POST -H "Content-Type: application/json" -d '{"query":"test"}' http://localhost:5002/query
+            echo "✅ API test completed"
+            exit 0
+          fi
+          echo "❌ Health check failed, waiting 2 seconds..."
+          sleep 2
+        done
+        echo "❌ All health checks failed, showing server logs:"
+        cat backend/server.log || echo "No server logs found"
+        exit 1
     
     - name: Build frontend
       run: |
