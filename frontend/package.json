@@ -47,11 +47,15 @@
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "axios-mock-adapter": "^1.22.0",
+    "identity-obj-proxy": "^3.0.0",
     "typescript": "^4.9.5"
   },
   "jest": {
     "transformIgnorePatterns": [
-      "node_modules/(?!(axios)/)"
-    ]
+      "node_modules/(?!(axios|reactflow)/)"
+    ],
+    "moduleNameMapper": {
+      "\\.(css|less|scss|sass)$": "identity-obj-proxy"
+    }
   }
 }
