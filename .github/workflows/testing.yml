@@ -68,7 +68,7 @@ jobs:
     - name: Run frontend tests
       run: |
         cd frontend
-        CI=true npm test -- --passWithNoTests
+        CI=true npm test -- --watchAll=false --passWithNoTests
 
   integration-test:
     runs-on: ubuntu-latest
@@ -94,7 +94,7 @@ jobs:
     - name: Install frontend dependencies
       working-directory: ./frontend
       run: |
-        npm ci --legacy-peer-deps
+        npm install
     
     - name: Start backend server
       run: |
