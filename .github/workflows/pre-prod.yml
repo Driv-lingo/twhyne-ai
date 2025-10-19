@@ -33,9 +33,11 @@ jobs:
         pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
     
     - name: Install frontend dependencies
+      working-directory: ./frontend
       run: |
-        cd frontend && npm ci --legacy-peer-deps
-        cd frontend && npm install --save-dev typescript@4.9.5 @testing-library/jest-dom @testing-library/react @testing-library/user-event jest-environment-jsdom --legacy-peer-deps frontend
+        npm ci --legacy-peer-deps
+        npm install --save-dev typescript@4.9.5 @testing-library/jest-dom @testing-library/react @testing-library/user-event jest-environment-jsdom --legacy-peer-deps
+        npm list @testing-library/jest-dom
         CI=false npm run build
     
     - name: Run backend tests
