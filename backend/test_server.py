@@ -82,13 +82,42 @@ def create_test_app():
         """
         return html
     
+    # Add CORS configuration for all endpoints
     @app.after_request
     def add_cors_headers(response):
         """Add CORS headers to every response."""
-        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Origin', 'https://twhyne.com')
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         return response
+    
+    # Handle OPTIONS requests explicitly for all endpoints
+    @app.route('/api/registration/register', methods=['OPTIONS'])
+    def register_options():
+        """Handle CORS preflight for registration endpoint."""
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', 'https://twhyne.com')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        return response, 200
+    
+    @app.route('/api/registration/validate', methods=['OPTIONS'])
+    def validate_options():
+        """Handle CORS preflight for validation endpoint."""
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', 'https://twhyne.com')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        return response, 200
+    
+    @app.route('/api/registration/renew', methods=['OPTIONS'])
+    def renew_options():
+        """Handle CORS preflight for renewal endpoint."""
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', 'https://twhyne.com')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        return response, 200
     
     return app
 
