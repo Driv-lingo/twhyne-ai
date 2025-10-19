@@ -1,3 +1,4 @@
 flask==2.3.2
 flask-cors==4.0.0
-sqlite3
+pillow==10.0.0
+numpy==1.24.3
