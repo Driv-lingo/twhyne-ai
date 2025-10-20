@@ -54,10 +54,15 @@ def create_test_app():
             <title>Download SNF-AI Windsurf</title>
             <style>
                 body {{ font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #667eea, #764ba2); color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }}
-                .container {{ background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 20px; padding: 40px; max-width: 600px; text-align: center; }}
+                .container {{ background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 20px; padding: 40px; max-width: 700px; text-align: center; }}
                 .license-key {{ font-family: monospace; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 5px; margin: 20px 0; }}
-                .download-btn {{ background: #4CAF50; color: white; border: none; padding: 15px 40px; font-size: 1.2em; border-radius: 50px; cursor: pointer; text-decoration: none; display: inline-block; margin: 20px 0; }}
-                .download-btn:hover {{ background: #45a049; }}
+                .download-options {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 30px 0; }}
+                .download-btn {{ background: #4CAF50; color: white; border: none; padding: 15px 20px; font-size: 1.1em; border-radius: 10px; cursor: pointer; text-decoration: none; display: block; transition: all 0.3s ease; }}
+                .download-btn:hover {{ background: #45a049; transform: translateY(-2px); }}
+                .download-btn .platform {{ font-size: 1.3em; margin-bottom: 5px; }}
+                .download-btn .size {{ font-size: 0.9em; opacity: 0.8; }}
+                .instructions {{ text-align: left; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 10px; margin: 20px 0; }}
+                .instructions h3 {{ margin-top: 0; text-align: center; }}
             </style>
         </head>
         <body>
@@ -66,16 +71,47 @@ def create_test_app():
                 <p>Your License Key:</p>
                 <div class="license-key">{license_key}</div>
                 <p>Valid for 90 days</p>
-                <h2>Download Instructions</h2>
-                <p>The SNF-AI Windsurf executable is available at:</p>
-                <a href="https://github.com/Driv-lingo/twhyne-ai/releases/latest" class="download-btn">📥 Download from GitHub</a>
-                <ol style="text-align: left;">
-                    <li>Click the download button above</li>
-                    <li>Download SNF-AI-Windsurf-3.0.0.zip</li>
-                    <li>Extract and run Install.command</li>
-                    <li>Enter your license key when prompted</li>
-                </ol>
-                <p style="margin-top: 30px; font-size: 0.9em;">Keep your license key safe!</p>
+                
+                <h2>Choose Your Platform</h2>
+                <div class="download-options">
+                    <a href="https://github.com/Driv-lingo/twhyne-ai/releases/download/v3.0.0/SNF-AI-Windsurf-Windows.zip" class="download-btn">
+                        <div class="platform">🪟 Windows</div>
+                        <div class="size">35.8 MB</div>
+                    </a>
+                    <a href="https://github.com/Driv-lingo/twhyne-ai/releases/latest" class="download-btn">
+                        <div class="platform">🍎 Mac (Intel)</div>
+                        <div class="size">94 MB</div>
+                    </a>
+                    <a href="https://github.com/Driv-lingo/twhyne-ai/releases/latest" class="download-btn">
+                        <div class="platform">🍎 Mac (M1/M2/M3)</div>
+                        <div class="size">89 MB</div>
+                    </a>
+                </div>
+                
+                <div class="instructions">
+                    <h3>📋 Installation Instructions</h3>
+                    <p><strong>Windows:</strong></p>
+                    <ol>
+                        <li>Download and extract the Windows ZIP file</li>
+                        <li>Double-click <code>SNF-AI-Windsurf.exe</code> to start</li>
+                        <li>Click "Run anyway" if Windows Defender shows a warning</li>
+                        <li>Your browser will open automatically</li>
+                        <li>Enter your license key when prompted</li>
+                    </ol>
+                    
+                    <p><strong>Mac:</strong></p>
+                    <ol>
+                        <li>Download the appropriate Mac version for your processor</li>
+                        <li>Extract and run <code>Install.command</code></li>
+                        <li>Or drag the app to your Applications folder</li>
+                        <li>Enter your license key when prompted</li>
+                    </ol>
+                </div>
+                
+                <p style="margin-top: 30px; font-size: 0.9em;">
+                    💡 <strong>First Run:</strong> The app will download AI models (~8GB) automatically<br>
+                    🔒 <strong>Keep your license key safe!</strong> Valid for 90 days on up to 3 devices
+                </p>
             </div>
         </body>
         </html>
