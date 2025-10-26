@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   snf-ai-windsurf:
-    image: TWHYNE/twhyne:latest
+    image: twhyne/twhyne:latest
     ports:
       - "3000:3000"  # Frontend
       - "5001:5001"  # Backend API

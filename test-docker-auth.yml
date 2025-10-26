@@ -1,0 +1,17 @@
+name: Test Docker Authentication
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-auth:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Test Docker Hub Login
+      run: |
+        echo "Testing Docker Hub authentication..."
+        echo "Username: ${{ secrets.DOCKER_USERNAME }}"
+        echo "Password length: ${#DOCKER_PASSWORD}"
+        docker login -u "${{ secrets.DOCKER_USERNAME }}" -p "${{ secrets.DOCKER_PASSWORD }}"
+      env:
+        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
