@@ -77,3 +77,9 @@ htmlcov/
 *.tmp
 *.bak
 nohup.out
+
+# Sensitive documentation
+DOCKER_SETUP.md
+*.secret
+*.key
+.secrets/

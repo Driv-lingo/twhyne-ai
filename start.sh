@@ -75,6 +75,10 @@ fi
 echo -e "${GREEN}✅ Dependencies ready${NC}"
 echo ""
 
+# Ensure model files are downloaded
+echo -e "${BLUE}📦 Downloading model files...${NC}"
+python scripts/download_models.py
+
 # Start Backend Server
 echo -e "${BLUE}🔧 Starting Backend Server (Port 5002)...${NC}"
 cd backend
