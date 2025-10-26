@@ -1,0 +1,39 @@
+# Fast build Dockerfile - optimized for GitHub Actions
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install system dependencies in one layer
+RUN apt-get update && apt-get install -y \
+    curl \
+    nodejs \
+    npm \
+    build-essential \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy and install Python requirements first (for better caching)
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy backend
+COPY backend/ ./backend/
+
+# Copy frontend and build
+COPY frontend/package*.json ./frontend/
+RUN cd frontend && npm ci --only=production
+
+COPY frontend/ ./frontend/
+RUN cd frontend && npm run build
+
+# Copy scripts and startup
+COPY scripts/ ./scripts/
+COPY start-docker.sh ./
+RUN chmod +x start-docker.sh
+
+# Expose ports
+EXPOSE 3000 5001 5002
+
+# Start
+CMD ["./start-docker.sh"]
