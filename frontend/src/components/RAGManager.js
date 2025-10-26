@@ -40,7 +40,7 @@ const RAGManager = ({ onNodeCreated }) => {
 
   const checkRAGStatus = async () => {
     try {
-      const response = await axios.get('http://localhost:5002/api/rag/status');
+      const response = await axios.get('http://localhost:5001/api/rag/status');
       setRagStatus(response.data);
     } catch (error) {
       console.error('Error checking RAG status:', error);
@@ -50,7 +50,7 @@ const RAGManager = ({ onNodeCreated }) => {
 
   const loadDatasets = async () => {
     try {
-      const response = await axios.get('http://localhost:5002/api/rag/datasets');
+      const response = await axios.get('http://localhost:5001/api/rag/datasets');
       setDatasets(response.data.datasets || []);
     } catch (error) {
       console.error('Error loading datasets:', error);
@@ -122,7 +122,7 @@ const RAGManager = ({ onNodeCreated }) => {
 
     setIsLoading(true);
     try {
-      const response = await axios.post('http://localhost:5002/api/rag/datasets', {
+      const response = await axios.post('http://localhost:5001/api/rag/datasets', {
         name: datasetName,
         description: datasetDescription,
         files: uploadedFiles
@@ -150,7 +150,7 @@ const RAGManager = ({ onNodeCreated }) => {
     if (!window.confirm('Are you sure you want to delete this dataset?')) return;
 
     try {
-      await axios.delete(`http://localhost:5002/api/rag/datasets/${datasetId}`);
+      await axios.delete(`http://localhost:5001/api/rag/datasets/${datasetId}`);
       loadDatasets();
       if (selectedDataset?.id === datasetId) {
         setSelectedDataset(null);
@@ -167,7 +167,7 @@ const RAGManager = ({ onNodeCreated }) => {
     setIsLoading(true);
     try {
       const response = await axios.post(
-        `http://localhost:5002/api/rag/datasets/${selectedDataset.id}/search`,
+        `http://localhost:5001/api/rag/datasets/${selectedDataset.id}/search`,
         { query: searchQuery, top_k: 5 }
       );
       setSearchResults(response.data.results || []);
