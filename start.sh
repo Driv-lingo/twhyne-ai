@@ -77,16 +77,19 @@ echo ""
 
 # Ensure model files are downloaded
 echo -e "${BLUE}📦 Downloading model files...${NC}"
-python scripts/download_models.py
+echo "Checking for model files..."
+python scripts/download_models.py || echo "Model download failed, continuing with existing models..."
 
 # Start Backend Server
 echo -e "${BLUE}🔧 Starting Backend Server (Port 5002)...${NC}"
+echo "Starting backend server..."
 cd backend
 python3 server.py > ../logs/backend.log 2>&1 &
 BACKEND_PID=$!
 cd ..
 
 # Wait a moment for backend to initialize
+sleep 5
 sleep 2
 
 # Check if backend started successfully

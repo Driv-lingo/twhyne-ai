@@ -1,0 +1,33 @@
+# Simple Dockerfile for SNF-AI Windsurf - Backend Only
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy backend files
+COPY backend/ ./backend/
+COPY scripts/ ./scripts/
+COPY models/ ./models/
+
+# Install httpx for model downloading
+RUN pip install httpx
+
+# Create a simple start script
+RUN echo '#!/bin/bash\necho "Starting SNF-AI Windsurf Backend..."\ncd /app/backend\npython server.py' > /app/start.sh
+RUN chmod +x /app/start.sh
+
+# Expose backend port
+EXPOSE 5001
+
+# Run the start script
+CMD ["/app/start.sh"]

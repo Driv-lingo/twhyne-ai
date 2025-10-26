@@ -7,9 +7,8 @@ MODEL_DIR = "/app/models"
 # URLs for the model files to download
 MODEL_URLS = {
     "mistral-7b-instruct-v0.2.Q4_K_M.gguf": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
-    "codellama-7b.Q4_K_M.gguf": "https://huggingface.co/TheBloke/CodeLlama-7B-GGUF/resolve/main/codellama-7b.Q4_K_M.gguf",
-    "llava-v1.5-7b-Q4_K.gguf": "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/ggml-model-Q4_K.gguf",
-    "mmproj-model-f16.gguf": "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/mmproj-model-f16.gguf"
+    "codellama-7b.Q4_K_M.gguf": "https://huggingface.co/TheBloke/CodeLlama-7B-GGUF/resolve/main/codellama-7b.Q4_K_M.gguf"
+    # Note: Vision models removed due to 404 errors - can be added back when URLs are fixed
 }
 
 def download_file(url, filename, destination_dir):

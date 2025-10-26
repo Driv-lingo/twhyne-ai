@@ -12,7 +12,9 @@ RUN npm run build
 # Use Python as the base image for backend
 FROM python:3.9-slim AS backend-build
 WORKDIR /app/backend
-COPY backend/requirements.txt ./
+# Install build tools for compiling packages like llama-cpp-python
+RUN apt-get update && apt-get install -y build-essential cmake
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./
 
@@ -20,8 +22,8 @@ COPY backend/ ./
 FROM python:3.9-slim
 WORKDIR /app
 
-# Install Node.js for running the frontend
-RUN apt-get update && apt-get install -y nodejs npm
+# Install Node.js and build tools for running the frontend and compiling packages
+RUN apt-get update && apt-get install -y nodejs npm build-essential cmake
 
 # Copy built frontend from frontend-build stage
 COPY --from=frontend-build /app/frontend/build /app/frontend/build
@@ -31,19 +33,20 @@ COPY --from=backend-build /app/backend /app/backend
 
 # Copy model download script and other necessary scripts
 COPY scripts/download_models.py /app/scripts/
-COPY start.sh /app/
+COPY start-docker.sh /app/
 
-# Install httpx for model downloading
+# Install Python dependencies in the final stage
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install httpx
 
-# Download models (if necessary)
-RUN python /app/scripts/download_models.py
+# Models will be downloaded at runtime to avoid build failures
 
 # Expose ports for frontend and backend - Railway will map these
 EXPOSE 3000 5001
 
 # Set executable permissions on start script
-RUN chmod +x /app/start.sh
+RUN chmod +x /app/start-docker.sh
 
 # Run the start script
-CMD ["/app/start.sh"]
+CMD ["/app/start-docker.sh"]
