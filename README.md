@@ -97,6 +97,58 @@ if "your_keyword" in prompt_lower:
         return node
 ```
 
+## Quick Start with Docker
+
+Get SNF-AI Windsurf running in minutes with our pre-built Docker image!
+
+### Prerequisites
+- Docker and Docker Compose installed on your system
+- At least 8GB of available disk space (for model files)
+
+### One-Command Setup
+```bash
+# Download and run the latest version
+curl -O https://twhyne.com/docker-compose.yml
+docker-compose up -d
+```
+
+### Manual Setup
+1. **Pull the Docker Image**:
+   ```bash
+   docker pull TWHYNE/twhyne:latest
+   ```
+
+2. **Run with Docker Compose** (Recommended):
+   ```bash
+   # Download the docker-compose file
+   curl -O https://twhyne.com/docker-compose.yml
+   
+   # Start the application
+   docker-compose up -d
+   ```
+
+3. **Or Run Directly**:
+   ```bash
+   docker run -d \
+     --name snf-ai-windsurf \
+     -p 3000:3000 \
+     -p 5001:5001 \
+     -v snf_models:/app/models \
+     -v snf_logs:/app/logs \
+     TWHYNE/twhyne:latest
+   ```
+
+### Access Your Application
+- **Frontend**: Open `http://localhost:3000` in your browser
+- **Backend API**: Available at `http://localhost:5001`
+
+### Important Notes
+- **First Run**: Model download takes 10-15 minutes (downloads ~8GB of AI models)
+- **Persistence**: Models and logs are saved in Docker volumes for faster restarts
+- **Stop**: Use `docker-compose down` to stop
+
+
+
 ## 📝 License
 
 MIT License - See LICENSE file for details.

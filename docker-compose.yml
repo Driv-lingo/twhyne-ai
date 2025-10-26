@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"  # Frontend
+      - "5001:5001"  # Backend
+    volumes:
+      - ./models:/app/models  # Persist model files outside container
+      - ./logs:/app/logs      # Persist logs
+    environment:
+      - NODE_ENV=production
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

@@ -1,1 +1,1 @@
-web: cd backend && python test_server.py
+web: /app/start.sh
