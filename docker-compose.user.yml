@@ -6,6 +6,7 @@ services:
     ports:
       - "3000:3000"  # Frontend
       - "5001:5001"  # Backend API
+      - "5002:5002"  # Backend API (fallback)
     volumes:
       - snf_models:/app/models      # Persist model files
       - snf_logs:/app/logs          # Persist logs
@@ -14,7 +15,7 @@ services:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      test: ["CMD", "curl", "-f", "http://localhost:5002/status"]
       interval: 30s
       timeout: 10s
       retries: 3
