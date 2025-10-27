@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import axios, { AxiosError } from 'axios';
 
 // --- Constants ---
-const API_BASE_URL = 'http://127.0.0.1:5001';
+const API_BASE_URL = 'http://127.0.0.1:5002';
 const WS_BASE_URL = API_BASE_URL.replace(/^http/, 'ws');
 const WS_RECONNECT_DELAY = 5000; // 5 seconds
 const WS_MAX_RECONNECT_ATTEMPTS = 3;

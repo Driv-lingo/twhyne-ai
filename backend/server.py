@@ -305,14 +305,6 @@ def create_app():
             node_id = data.get('node_id')
             conversation_history = data.get('conversation_history', [])
             
-            # Summarize long conversation histories to prevent token overload
-            if len(conversation_history) > 10:
-                logger.info(f"Summarizing long conversation history of {len(conversation_history)} items")
-                summarized_history = conversation_history[-5:]  # Keep last 5 exchanges
-                if len(conversation_history) > 5:
-                    summarized_history.insert(0, {'role': 'system', 'content': f"Summary of earlier conversation: User asked about {', '.join([h['content'][:30] + '...' for h in conversation_history[:5] if h['role'] == 'user'])}"})
-                conversation_history = summarized_history
-            
             logger.info(f"Received query data: {data}")
             
             if not prompt or not prompt.strip():
@@ -354,9 +346,13 @@ def create_app():
             
             response = node.process(query_obj)
             
-            # Post-process to ensure completeness if response seems cut off
-            if response.text and not response.text.endswith(('.', '!', '?', '...')) and len(response.text.split('.')) < 2:
-                logger.info(f"Response seems incomplete, triggering follow-up for: {prompt[:50]}...")
+            # Only check for completeness if the node is language/planner and response is very short
+            # Skip this check for math/code nodes which give precise answers
+            if (node.node_id in ['language-mistral-7b', 'planner-mistral-7b'] and 
+                response.text and 
+                len(response.text) < 50 and 
+                not response.text.endswith(('.', '!', '?', '...'))):
+                logger.info(f"Short response detected, may need completion for: {prompt[:50]}...")
                 follow_up_query = Query(
                     id=f"follow_up_{int(time.time() * 1000)}",
                     text="Please complete the previous answer.",

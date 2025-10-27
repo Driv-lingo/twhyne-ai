@@ -86,6 +86,7 @@ class MathNode(FluxNode):
 
     def generate(self, query: str, **kwargs: Any) -> Optional[str]:
         """Generate a response to a mathematical query."""
+        # Math queries should be context-independent - ignore conversation history
         if not self.is_available or self.llm is None:
             logger.warning("MathNode is not available or not properly initialized.")
             return None
@@ -93,15 +94,16 @@ class MathNode(FluxNode):
         # First, try the safe, deterministic evaluator
         safe_result = self.safe_eval(query)
         if safe_result is not None:
-            logger.info(f"Query '{query}' handled by safe evaluator.")
+            logger.info(f"Query '{query}' handled by safe evaluator: {safe_result}")
             return safe_result
 
-        # If safe eval fails, use the LLM
+        # If safe eval fails, use the LLM with a clean prompt (no conversation history)
         logger.info(f"Query '{query}' being handled by LLM.")
-        prompt = f"Question: {query}\nAnswer:"
+        prompt = f"Solve this math problem and provide only the final answer:\n\nQuestion: {query}\nAnswer:"
         try:
-            output = self.llm(prompt, max_tokens=2048, stop=["\n", "</s>"], temperature=0.7, top_k=40, repeat_penalty=1.1, echo=False)
+            output = self.llm(prompt, max_tokens=256, stop=["\n", "</s>", "Question:"], temperature=0.1, top_k=10, repeat_penalty=1.0, echo=False)
             response = output['choices'][0]['text'].strip()
+            logger.info(f"Math LLM response: {response}")
             return response
         except Exception as e:
             logger.error(f"Error during LLM inference: {e}", exc_info=True)

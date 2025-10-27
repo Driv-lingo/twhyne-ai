@@ -1,0 +1,20 @@
+{
+  "SNF-286B71F3-673065B9": {
+    "email": "test@example.com",
+    "expiry_date": "2026-01-25T18:23:41.038270",
+    "device_id": null,
+    "created_at": "2025-10-27T18:23:41.038301",
+    "is_active": true,
+    "validation_count": 0,
+    "last_validated": null
+  },
+  "SNF-F52302CD-B37DB9C8": {
+    "email": "user@example.com",
+    "expiry_date": "2025-11-26T18:25:00.918719",
+    "device_id": null,
+    "created_at": "2025-10-27T18:25:00.918767",
+    "is_active": true,
+    "validation_count": 0,
+    "last_validated": null
+  }
+}

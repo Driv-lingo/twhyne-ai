@@ -162,10 +162,21 @@ class LanguageNode(FluxNode):
 
     def _format_prompt(self, query_text: str, conversation_history: list = None) -> str:
         """Format the prompt for the model with conversation history."""
-        if not conversation_history:
+        if not conversation_history or len(conversation_history) == 0:
             return f"[INST] {query_text} [/INST]"
         
-        # Build conversation context
+        # Check if query seems to reference previous conversation
+        needs_context = any(word in query_text.lower() for word in [
+            'it', 'this', 'that', 'these', 'those', 'the above', 'the previous',
+            'what did', 'you said', 'you mentioned', 'we discussed', 'earlier',
+            'as you', 'continue', 'also', 'too', 'as well', 'additionally'
+        ])
+        
+        # If no context needed, keep it simple
+        if not needs_context:
+            return f"[INST] {query_text} [/INST]"
+        
+        # Build conversation context only if needed
         context_parts = []
         
         # Add recent conversation history (limit to last 2 messages for speed)

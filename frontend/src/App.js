@@ -202,7 +202,7 @@ function App() {
   // Fetch node status
   const fetchNodeStatus = useCallback(async () => {
     try {
-      const res = await axios.get('http://127.0.0.1:5001/nodes');
+      const res = await axios.get('http://127.0.0.1:5002/nodes');
       const nodeList = res.data;
       
       // Convert node list to object for easier lookup
@@ -397,7 +397,7 @@ function App() {
       // Create form data if file is attached
       if (file) {
         // Use upload endpoint for file uploads
-        endpoint = 'http://127.0.0.1:5001/upload';
+        endpoint = 'http://127.0.0.1:5002/upload';
         const formData = new FormData();
         formData.append('file', file); // Ensure key is 'file' to match backend expectation
         formData.append('prompt', userQuery);
@@ -413,7 +413,7 @@ function App() {
         uploadedFilePath = uploadRes.data.filepath;
         setFile(null); // Clear the file after upload
         // Now make a query request with the uploaded file path
-        endpoint = 'http://127.0.0.1:5001/query';
+        endpoint = 'http://127.0.0.1:5002/query';
         payload = {
           prompt: userQuery,
           image_path: uploadedFilePath,
@@ -436,7 +436,7 @@ function App() {
         setResponse(queryRes.data.response);
       } else {
         // Use query endpoint for text-only queries
-        endpoint = 'http://127.0.0.1:5001/query';
+        endpoint = 'http://127.0.0.1:5002/query';
         payload = {
           prompt: userQuery,
           conversation_history: history,
@@ -495,7 +495,7 @@ function App() {
       // Set processing node for visualization
       setProcessingNode(activeNodeId);
       
-      const res = await axios.post('http://127.0.0.1:5001/query', {
+      const res = await axios.post('http://127.0.0.1:5002/query', {
         prompt: 'Please continue your previous response.',
         conversation_history: history,
         node_id: activeNodeId
@@ -537,7 +537,7 @@ function App() {
   // Handle feedback submission
   const handleFeedback = async (isPositive) => {
     try {
-      await axios.post('http://127.0.0.1:5001/feedback', {
+      await axios.post('http://127.0.0.1:5002/feedback', {
         positive: isPositive,
         feedback: isPositive ? 'positive' : 'negative'
       });

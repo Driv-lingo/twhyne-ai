@@ -1,8 +1,0 @@
-[phases.setup]
-nixPkgs = ["python311"]
-
-[phases.install]
-cmds = ["pip install Flask flask-cors requests"]
-
-[start]
-cmd = "python3 license_api_server.py"
