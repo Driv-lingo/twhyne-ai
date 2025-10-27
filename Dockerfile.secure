@@ -1,0 +1,44 @@
+# Secure SNF-AI Windsurf Docker Image
+# Models are encrypted and require valid license to decrypt
+
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy requirements
+COPY requirements.txt requirements-api.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-api.txt
+
+# Install cryptography for model encryption
+RUN pip install --no-cache-dir cryptography
+
+# Copy application code
+COPY backend/ ./backend/
+COPY frontend/build/ ./frontend/build/
+COPY models/ ./models/
+
+# Copy scripts
+COPY scripts/ ./scripts/
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV FLASK_APP=backend.secure_server_startup
+ENV PORT=5002
+
+# Expose port
+EXPOSE 5002
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:5002/status || exit 1
+
+# Run secure startup script (validates license and decrypts models)
+CMD ["python3", "-m", "backend.secure_server_startup"]

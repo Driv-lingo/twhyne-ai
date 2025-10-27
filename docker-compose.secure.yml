@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  snf-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile.secure
+    image: snf-ai-windsurf:secure
+    container_name: snf-ai-windsurf
+    
+    # License key REQUIRED - set via environment variable
+    environment:
+      - SNF_LICENSE_KEY=${SNF_LICENSE_KEY}
+      - SNF_LICENSE_API=${SNF_LICENSE_API:-https://web-production-d31c0.up.railway.app}
+      - PORT=5002
+    
+    ports:
+      - "5002:5002"
+      - "3000:3000"
+    
+    volumes:
+      # Optional: Mount config directory for license caching
+      - ./data:/app/data
+    
+    restart: unless-stopped
+    
+    networks:
+      - snf-ai-network
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  snf-ai-network:
+    driver: bridge
+
+volumes:
+  snf-ai-data:
+    driver: local
