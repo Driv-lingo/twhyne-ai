@@ -5,7 +5,7 @@
 ### Option 1: Docker Run
 ```bash
 docker run -d \
-  --name snf-ai-windsurf \
+  --name twhyne \
   -p 3000:3000 \
   -p 5001:5001 \
   -v snf_models:/app/models \
@@ -52,12 +52,12 @@ docker-compose up -d
 ## 🔄 Update
 ```bash
 docker pull twhyne/twhyne:prod
-docker restart snf-ai-windsurf
+docker restart twhyne
 ```
 
 ## 🛑 Stop
 ```bash
-docker stop snf-ai-windsurf
+docker stop twhyne
 ```
 
 That's it! No GitHub, no releases, just Docker Hub.

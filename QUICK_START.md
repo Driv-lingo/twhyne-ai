@@ -8,7 +8,7 @@ docker pull twhyne/twhyne:prod
 
 # 2. Run the container
 docker run -d \
-  --name snf-ai-windsurf \
+  --name twhyne \
   -p 3000:3000 \
   -p 5001:5001 \
   -v snf_models:/app/models \
@@ -24,28 +24,28 @@ Access at: **http://localhost:3000**
 
 ### Start
 ```bash
-docker start snf-ai-windsurf
+docker start twhyne
 ```
 
 ### Stop
 ```bash
-docker stop snf-ai-windsurf
+docker stop twhyne
 ```
 
 ### Restart
 ```bash
-docker restart snf-ai-windsurf
+docker restart twhyne
 ```
 
 ### View Logs
 ```bash
-docker logs -f snf-ai-windsurf
+docker logs -f twhyne
 # Press Ctrl+C to exit logs (container keeps running)
 ```
 
 ### Check Status
 ```bash
-docker ps | grep snf-ai-windsurf
+docker ps | grep twhyne
 ```
 
 ---
@@ -54,15 +54,15 @@ docker ps | grep snf-ai-windsurf
 
 ```bash
 # 1. Stop and remove old container
-docker stop snf-ai-windsurf
-docker rm snf-ai-windsurf
+docker stop twhyne
+docker rm twhyne
 
 # 2. Pull latest image
 docker pull twhyne/twhyne:prod
 
 # 3. Run new container (same command as first time)
 docker run -d \
-  --name snf-ai-windsurf \
+  --name twhyne \
   -p 3000:3000 \
   -p 5001:5001 \
   -v snf_models:/app/models \
@@ -89,10 +89,10 @@ docker rm <container-name>
 ### Container Won't Start
 ```bash
 # Check logs for errors
-docker logs snf-ai-windsurf
+docker logs twhyne
 
 # Remove and recreate
-docker rm snf-ai-windsurf
+docker rm twhyne
 # Then run the docker run command again
 ```
 
@@ -100,7 +100,7 @@ docker rm snf-ai-windsurf
 ```bash
 # Models download automatically on first run
 # Wait 5-10 minutes for initial download
-docker logs -f snf-ai-windsurf
+docker logs -f twhyne
 ```
 
 ---
@@ -109,8 +109,8 @@ docker logs -f snf-ai-windsurf
 
 To remove everything (including downloaded models):
 ```bash
-docker stop snf-ai-windsurf
-docker rm snf-ai-windsurf
+docker stop twhyne
+docker rm twhyne
 docker volume rm snf_models snf_logs
 docker image rm twhyne/twhyne:prod
 ```
