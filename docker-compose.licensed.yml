@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  snf-ai:
+    image: twhyne/snf-ai-windsurf:latest
+    container_name: snf-ai-windsurf
+    
+    # LICENSE KEY REQUIRED - Set before running
+    environment:
+      - SNF_LICENSE_KEY=${SNF_LICENSE_KEY}
+    
+    ports:
+      - "5002:5002"
+      - "3000:3000"
+    
+    volumes:
+      - snf-models:/app/models
+      - snf-data:/app/data
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  snf-models:
+  snf-data:

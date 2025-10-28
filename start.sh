@@ -77,24 +77,28 @@ echo ""
 
 # Ensure model files are downloaded
 echo -e "${BLUE}📦 Downloading model files...${NC}"
-echo "Checking for model files..."
-python scripts/download_models.py || echo "Model download failed, continuing with existing models..."
+echo "Starting SNF-AI Windsurf..."
 
-# Start Backend Server
-echo -e "${BLUE}🔧 Starting Backend Server (Port 5002)...${NC}"
+# Check license FIRST
+echo "Validating license..."
+python3 backend/simple_license_check.py
+
+# If license check passes, continue startup
+echo "License valid - proceeding with startup"
+
+# Download models if needed
+python3 scripts/download_models_if_needed.py
+
+# Start backend
 echo "Starting backend server..."
-cd backend
-python3 server.py > ../logs/backend.log 2>&1 &
-BACKEND_PID=$!
-cd ..
+python3 backend/server.py &
 
-# Wait a moment for backend to initialize
-sleep 5
-sleep 2
-
-# Check if backend started successfully
-if ! ps -p $BACKEND_PID > /dev/null; then
-    echo -e "${RED}❌ Backend failed to start. Check logs/backend.log${NC}"
+# Start frontend (if built)
+if [ -d "frontend/build" ]; then
+    echo "Starting frontend..."
+    cd frontend
+    npx serve -s build -l 3000 &
+    cd ..
     exit 1
 fi
 
