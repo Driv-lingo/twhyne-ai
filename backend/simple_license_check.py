@@ -2,22 +2,92 @@
 """
 Simple license validation for Docker container.
 Checks license on startup and periodically. Exits if invalid.
+Includes offline expiry check to prevent air-gap bypass.
 """
 
 import os
 import sys
 import time
+import json
 import requests
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
+from pathlib import Path
 
 LICENSE_API = os.environ.get('LICENSE_API_URL', "https://sunny-imagination-production.up.railway.app")
 LICENSE_KEY_ENV = "SNF_LICENSE_KEY"
 CHECK_INTERVAL_HOURS = 24  # Check daily
+CACHE_FILE = Path('/app/.license_cache.json')
+MAX_OFFLINE_DAYS = 7  # Allow 7 days offline before forcing reconnection
+
+
+def save_license_cache(license_key, expiry_date):
+    """Save license expiry to local cache."""
+    try:
+        cache_data = {
+            'license_key': license_key,
+            'expiry_date': expiry_date,
+            'last_validated': datetime.now().isoformat()
+        }
+        CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(cache_data, f)
+    except Exception as e:
+        print(f"⚠ Could not save license cache: {e}")
+
+
+def load_license_cache():
+    """Load license cache from disk."""
+    try:
+        if CACHE_FILE.exists():
+            with open(CACHE_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"⚠ Could not load license cache: {e}")
+    return None
+
+
+def check_local_expiry(license_key):
+    """Check if license has expired based on local cache."""
+    cache = load_license_cache()
+    
+    if not cache:
+        return None  # No cache, must validate online
+    
+    if cache.get('license_key') != license_key:
+        return None  # Different license key, must revalidate
+    
+    # Check if license has expired
+    try:
+        expiry_date = datetime.fromisoformat(cache['expiry_date'])
+        if datetime.now() > expiry_date:
+            return False  # License expired locally
+        
+        # Check if we've been offline too long
+        last_validated = datetime.fromisoformat(cache['last_validated'])
+        offline_duration = datetime.now() - last_validated
+        
+        if offline_duration > timedelta(days=MAX_OFFLINE_DAYS):
+            print(f"⚠ License not validated online for {offline_duration.days} days")
+            return None  # Force online validation
+        
+        return True  # Valid based on cache
+        
+    except Exception as e:
+        print(f"⚠ Error checking local expiry: {e}")
+        return None
 
 
 def validate_license(license_key):
-    """Validate license key with server."""
+    """Validate license key with server (with offline fallback)."""
+    
+    # First, check local expiry
+    local_check = check_local_expiry(license_key)
+    if local_check is False:
+        print("✗ License has expired (local check)")
+        return False
+    
+    # Try online validation
     try:
         response = requests.post(
             f"{LICENSE_API}/api/validate",
@@ -30,6 +100,9 @@ def validate_license(license_key):
             if data.get('valid'):
                 expiry = data.get('expiry_date', '')
                 print(f"✓ License valid until: {expiry}")
+                
+                # Save to cache for offline use
+                save_license_cache(license_key, expiry)
                 return True
             else:
                 print(f"✗ License invalid: {data.get('message', 'Unknown error')}")
@@ -39,8 +112,20 @@ def validate_license(license_key):
             return False
             
     except requests.exceptions.ConnectionError:
-        print("⚠ Cannot connect to license server - allowing startup (grace period)")
-        return True  # Allow if server is down (grace period)
+        print("⚠ Cannot connect to license server")
+        
+        # Fallback to cached validation
+        if local_check is True:
+            cache = load_license_cache()
+            last_validated = datetime.fromisoformat(cache['last_validated'])
+            offline_days = (datetime.now() - last_validated).days
+            print(f"✓ Using cached license (offline for {offline_days} days)")
+            print(f"✓ License valid until: {cache['expiry_date']}")
+            return True
+        else:
+            print("✗ No valid license cache available")
+            return False
+            
     except Exception as e:
         print(f"✗ License validation error: {e}")
         return False
