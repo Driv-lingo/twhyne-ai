@@ -20,7 +20,7 @@ def validate_license(license_key):
     """Validate license key with server."""
     try:
         response = requests.post(
-            f"{LICENSE_API}/api/registration/validate",
+            f"{LICENSE_API}/api/validate",
             json={"license_key": license_key},
             timeout=10
         )
