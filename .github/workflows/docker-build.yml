@@ -2,10 +2,11 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: [ main, prod ]
+    branches: [ main ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
 
 env:
   REGISTRY: docker.io
