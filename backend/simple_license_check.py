@@ -11,7 +11,7 @@ import requests
 import threading
 from datetime import datetime
 
-LICENSE_API = "https://web-production-d31c0.up.railway.app"
+LICENSE_API = os.environ.get('LICENSE_API_URL', "https://sunny-imagination-production.up.railway.app")
 LICENSE_KEY_ENV = "SNF_LICENSE_KEY"
 CHECK_INTERVAL_HOURS = 24  # Check daily
 
