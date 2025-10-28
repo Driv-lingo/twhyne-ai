@@ -148,7 +148,7 @@
             {% endif %}
             
             <div style="margin-top: 30px;">
-                <button class="btn btn-primary" onclick="purchaseLicense()">Purchase New License ($XX/month)</button>
+                <button class="btn btn-primary" onclick="purchaseLicense()">Purchase New License ($20/month)</button>
             </div>
         </div>
 
@@ -177,7 +177,7 @@
         }
 
         async function purchaseLicense() {
-            if (!confirm('Purchase a 30-day license for $XX?')) return;
+            if (!confirm('Purchase a 30-day license for $20?')) return;
             
             try {
                 const response = await fetch('/api/purchase-license', {
@@ -188,14 +188,30 @@
                 const data = await response.json();
                 
                 if (response.ok) {
-                    alert('License generated successfully!\\n\\nLicense Key: ' + data.license_key);
-                    location.reload();
+                    if (data.checkout_url) {
+                        // Redirect to Stripe checkout
+                        window.location.href = data.checkout_url;
+                    } else {
+                        // Test mode - license generated immediately
+                        alert('License generated successfully!\\n\\nLicense Key: ' + data.license_key);
+                        location.reload();
+                    }
                 } else {
                     alert('Error: ' + (data.error || 'Purchase failed'));
                 }
             } catch (error) {
                 alert('Network error. Please try again.');
             }
+        }
+        
+        // Check for payment success/cancel
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('payment') === 'success') {
+            alert('Payment successful! Your license has been generated.\\nCheck your email for details.');
+            window.location.href = '/dashboard';
+        } else if (urlParams.get('payment') === 'cancel') {
+            alert('Payment cancelled.');
+            window.location.href = '/dashboard';
         }
 
         function copyToClipboard(text) {

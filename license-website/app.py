@@ -10,6 +10,7 @@ import json
 import hashlib
 import secrets
 import uuid
+import stripe
 from datetime import datetime, timedelta
 from pathlib import Path
 import os
@@ -17,6 +18,12 @@ import os
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 CORS(app)
+
+# Stripe configuration
+stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
+STRIPE_PRICE_ID = os.environ.get('STRIPE_PRICE_ID', '')  # Create this in Stripe Dashboard
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+LICENSE_PRICE = 20  # $20/month
 
 # Database file (simple JSON for now - use real DB for production)
 DB_FILE = Path('license_db.json')
@@ -138,34 +145,59 @@ def api_logout():
 
 @app.route('/api/purchase-license', methods=['POST'])
 def api_purchase_license():
-    """Purchase a new 30-day license."""
+    """Create Stripe checkout session for license purchase."""
     if 'user_email' not in session:
         return jsonify({'error': 'Not logged in'}), 401
     
-    # In production, integrate with Stripe/PayPal here
-    # For now, just generate the license (manual payment)
-    
     email = session['user_email']
-    license_key = generate_license_key()
     
-    db = load_db()
-    db['licenses'][license_key] = {
-        'email': email,
-        'license_key': license_key,
-        'created_at': datetime.now().isoformat(),
-        'expiry_date': (datetime.now() + timedelta(days=30)).isoformat(),
-        'is_active': True,
-        'payment_status': 'manual'  # Change to 'paid' with real payment
-    }
+    # Check if Stripe is configured
+    if not stripe.api_key or not STRIPE_PRICE_ID:
+        # Fallback to manual license generation (for testing)
+        license_key = generate_license_key()
+        db = load_db()
+        db['licenses'][license_key] = {
+            'email': email,
+            'license_key': license_key,
+            'created_at': datetime.now().isoformat(),
+            'expiry_date': (datetime.now() + timedelta(days=30)).isoformat(),
+            'is_active': True,
+            'payment_status': 'manual'
+        }
+        save_db(db)
+        
+        return jsonify({
+            'success': True,
+            'license_key': license_key,
+            'expiry_date': db['licenses'][license_key]['expiry_date'],
+            'message': '30-day license generated (test mode)'
+        })
     
-    save_db(db)
-    
-    return jsonify({
-        'success': True,
-        'license_key': license_key,
-        'expiry_date': db['licenses'][license_key]['expiry_date'],
-        'message': '30-day license generated successfully'
-    })
+    # Create Stripe checkout session
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            customer_email=email,
+            payment_method_types=['card'],
+            line_items=[{
+                'price': STRIPE_PRICE_ID,
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url=request.host_url + 'dashboard?payment=success',
+            cancel_url=request.host_url + 'dashboard?payment=cancel',
+            metadata={
+                'user_email': email,
+                'product': 'snf_ai_license_30days'
+            }
+        )
+        
+        return jsonify({
+            'success': True,
+            'checkout_url': checkout_session.url
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/validate', methods=['POST'])
 def api_validate():
@@ -197,6 +229,46 @@ def api_validate():
         'expiry_date': license_data['expiry_date'],
         'message': 'License valid'
     })
+
+
+@app.route('/api/stripe-webhook', methods=['POST'])
+def stripe_webhook():
+    """Handle Stripe webhook events."""
+    payload = request.get_data(as_text=True)
+    sig_header = request.headers.get('Stripe-Signature')
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError:
+        return jsonify({'error': 'Invalid payload'}), 400
+    except stripe.error.SignatureVerificationError:
+        return jsonify({'error': 'Invalid signature'}), 400
+    
+    # Handle successful payment
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        email = session['metadata']['user_email']
+        
+        # Generate license
+        license_key = generate_license_key()
+        db = load_db()
+        db['licenses'][license_key] = {
+            'email': email,
+            'license_key': license_key,
+            'created_at': datetime.now().isoformat(),
+            'expiry_date': (datetime.now() + timedelta(days=30)).isoformat(),
+            'is_active': True,
+            'payment_status': 'paid',
+            'stripe_session_id': session['id']
+        }
+        save_db(db)
+        
+        # TODO: Send email to customer with license key
+        print(f"License generated for {email}: {license_key}")
+    
+    return jsonify({'success': True})
 
 
 if __name__ == '__main__':
