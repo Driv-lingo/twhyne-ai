@@ -22,6 +22,12 @@ COPY backend/ ./
 FROM python:3.9-slim
 WORKDIR /app
 
+# Version labeling
+ARG VERSION=dev
+LABEL version="${VERSION}"
+LABEL maintainer="support@twhyne.com"
+LABEL description="SNF-AI Windsurf - Licensed AI Platform"
+
 # Install Node.js and build tools for running the frontend and compiling packages
 RUN apt-get update && apt-get install -y nodejs npm build-essential cmake
 
@@ -33,7 +39,8 @@ COPY --from=backend-build /app/backend /app/backend
 
 # Copy model download script and other necessary scripts
 COPY scripts/download_models.py /app/scripts/
-COPY start-docker.sh /app/
+COPY start_with_license.sh /app/
+COPY backend/simple_license_check.py /app/backend/
 
 # Install Python dependencies in the final stage
 COPY requirements.txt .
@@ -46,7 +53,7 @@ RUN pip install httpx
 EXPOSE 3000 5001
 
 # Set executable permissions on start script
-RUN chmod +x /app/start-docker.sh
+RUN chmod +x /app/start_with_license.sh
 
-# Run the start script
-CMD ["/app/start-docker.sh"]
+# Run the start script with license enforcement
+CMD ["/app/start_with_license.sh"]

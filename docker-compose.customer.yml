@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  snf-ai:
+    image: twhyne/twhyne:prod
+    container_name: twhyne
+    
+    environment:
+      - SNF_LICENSE_KEY=${SNF_LICENSE_KEY}
+    
+    ports:
+      - "3000:3000"
+      - "5001:5001"
+    
+    volumes:
+      - snf_models:/app/models
+      - snf_logs:/app/logs
+    
+    restart: unless-stopped
+
+volumes:
+  snf_models:
+  snf_logs:

@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  snf-ai:
+    image: twhyne/twhyne:licensed
+    container_name: twhyne
+    
+    environment:
+      - SNF_LICENSE_KEY=${SNF_LICENSE_KEY}
+    
+    ports:
+      - "3000:3000"
+      - "5001:5001"
+    
+    # CRITICAL: Named volumes persist across container updates
+    volumes:
+      # Models (large, expensive to re-download)
+      - snf_models:/app/models
+      
+      # User data and conversations
+      - snf_data:/app/data
+      - snf_conversations:/app/conversations
+      
+      # RAG documents and embeddings
+      - snf_rag:/app/rag_storage
+      - snf_uploads:/app/uploads
+      
+      # Application logs
+      - snf_logs:/app/logs
+      
+      # Database (if using SQLite)
+      - snf_db:/app/database
+    
+    restart: unless-stopped
+
+# Named volumes - persist independently of container lifecycle
+volumes:
+  snf_models:
+    driver: local
+  snf_data:
+    driver: local
+  snf_conversations:
+    driver: local
+  snf_rag:
+    driver: local
+  snf_uploads:
+    driver: local
+  snf_logs:
+    driver: local
+  snf_db:
+    driver: local

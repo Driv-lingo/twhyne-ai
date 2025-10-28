@@ -154,18 +154,27 @@
 
         {% if licenses %}
         <div class="license-card instructions">
-            <h3>🚀 How to Use Your License</h3>
-            <ol style="margin-left: 20px; line-height: 1.8;">
-                <li>Copy your license key above</li>
-                <li>Set it as an environment variable:
-                    <br><code>export SNF_LICENSE_KEY="your-key-here"</code>
-                </li>
-                <li>Login to Docker Hub (we'll provide credentials)</li>
-                <li>Run the Docker container:
-                    <br><code>docker-compose -f docker-compose.licensed.yml up</code>
-                </li>
-                <li>Access the application at <code>http://localhost:5002</code></li>
-            </ol>
+            <h3>🚀 Quick Start - Download & Run</h3>
+            <div style="margin: 20px 0;">
+                <h4>Step 1: Install Docker Desktop</h4>
+                <a href="https://docker.com" target="_blank" class="btn btn-secondary">Download Docker</a>
+                
+                <h4 style="margin-top: 20px;">Step 2: Download SNF-AI Manager</h4>
+                <div style="display: flex; gap: 10px; margin: 10px 0;">
+                    <a href="/download/windows" class="btn btn-primary">📥 Download for Windows</a>
+                    <a href="/download/mac" class="btn btn-primary">📥 Download for Mac</a>
+                </div>
+                
+                <h4 style="margin-top: 20px;">Step 3: Run</h4>
+                <p>1. Extract the downloaded ZIP file</p>
+                <p>2. Double-click START-SNF-AI (.bat for Windows, .command for Mac)</p>
+                <p>3. Enter your license key when prompted: <code>{{ licenses[0].license_key }}</code></p>
+                <p>4. Your browser will open automatically!</p>
+            </div>
+            
+            <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                <strong>💡 No command line needed!</strong> Just double-click to start/stop/update.
+            </div>
         </div>
         {% endif %}
     </div>
