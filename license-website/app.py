@@ -183,6 +183,7 @@ def api_purchase_license():
                 'quantity': 1,
             }],
             mode='payment',
+            allow_promotion_codes=True,
             success_url=request.host_url + 'dashboard?payment=success',
             cancel_url=request.host_url + 'dashboard?payment=cancel',
             metadata={
