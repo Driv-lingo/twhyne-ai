@@ -16,17 +16,19 @@ from pathlib import Path
 import os
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-CORS(app)
-
-# Stripe configuration
-stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
-STRIPE_PRICE_ID = os.environ.get('STRIPE_PRICE_ID', '')  # Create this in Stripe Dashboard
+# Configuration
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
-LICENSE_PRICE = 20  # $20/month
+stripe.api_key = STRIPE_SECRET_KEY
 
-# Database file (simple JSON for now - use real DB for production)
-DB_FILE = Path('license_db.json')
+# Use persistent volume on Railway
+DATA_DIR = Path('/app/data') if os.path.exists('/app/data') else Path('.')
+DATA_DIR.mkdir(exist_ok=True)
+
+# Simple file-based database
+DB_FILE = DATA_DIR / 'licenses.json'
 
 def load_db():
     """Load database."""
