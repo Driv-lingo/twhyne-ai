@@ -168,7 +168,7 @@
                 <h4 style="margin-top: 20px;">Step 3: Run</h4>
                 <p>1. Extract the downloaded ZIP file</p>
                 <p>2. Double-click START-SNF-AI (.bat for Windows, .command for Mac)</p>
-                <p>3. Enter your license key when prompted: <code>{{ licenses[0].license_key }}</code></p>
+                <p>3. Enter your license key when prompted: <code>{{ licenses.values() | first | attr('license_key') if licenses else 'YOUR-LICENSE-KEY' }}</code></p>
                 <p>4. Your browser will open automatically!</p>
             </div>
             
