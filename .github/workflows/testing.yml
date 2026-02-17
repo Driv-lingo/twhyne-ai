@@ -23,7 +23,11 @@ jobs:
         cd backend
         pip install --upgrade pip
         pip install flask flask-cors requests pillow numpy
-        pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu || echo "llama-cpp-python install skipped (optional)"
+    
+    - name: Install optional ML dependencies
+      continue-on-error: true
+      run: |
+        pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
     
     - name: Check Python syntax
       run: |

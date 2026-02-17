@@ -190,6 +190,14 @@ class LicenseServerIntegration(unittest.TestCase):
 
     def test_telemetry_ingestion(self):
         """Test anonymous telemetry report ingestion."""
+        # Take baseline reading
+        baseline_resp = requests.get(
+            f'{LICENSE_SERVER_URL}/api/admin/kpis',
+            params={'admin_secret': ADMIN_SECRET},
+            timeout=5
+        )
+        baseline_queries = baseline_resp.json()['telemetry']['aggregate_queries']
+
         report = {
             'instance_id': 'integration-test-instance',
             'total_queries': 100,
@@ -208,7 +216,7 @@ class LicenseServerIntegration(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()['success'])
 
-        # Verify reflected in KPIs
+        # Verify reflected in KPIs (increased by at least 100 from baseline)
         kpi_resp = requests.get(
             f'{LICENSE_SERVER_URL}/api/admin/kpis',
             params={'admin_secret': ADMIN_SECRET},
@@ -216,11 +224,22 @@ class LicenseServerIntegration(unittest.TestCase):
         )
         kpi_data = kpi_resp.json()
         self.assertGreaterEqual(
-            kpi_data['telemetry']['aggregate_queries'], 100
+            kpi_data['telemetry']['aggregate_queries'], baseline_queries + 100
         )
 
     def test_update_check(self):
         """Test update checking endpoint."""
+        # First set a known version
+        requests.post(
+            f'{LICENSE_SERVER_URL}/api/admin/updates/set',
+            json={
+                'admin_secret': ADMIN_SECRET,
+                'latest_version': '5.0.0',
+                'release_notes': 'Test release',
+            },
+            timeout=5
+        )
+
         resp = requests.get(
             f'{LICENSE_SERVER_URL}/api/updates/check',
             params={'current_version': '0.1.0'},

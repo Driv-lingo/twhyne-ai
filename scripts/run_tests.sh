@@ -41,29 +41,32 @@ run_syntax_checks() {
     echo -e "${GREEN}✓ Syntax checks passed${NC}"
 }
 
+TEST_SERVER_PID=""
+LICENSE_SERVER_PID=""
+
 start_servers() {
     echo -e "\n${YELLOW}▸ Starting servers for integration tests...${NC}"
     cd "$BACKEND_DIR"
     
     # Start test server
     python3 test_server.py > /tmp/snf_test_server.log 2>&1 &
-    TEST_PID=$!
-    echo "  Test server PID: $TEST_PID"
+    TEST_SERVER_PID=$!
+    echo "  Test server PID: $TEST_SERVER_PID"
     
     # Start license server
     python3 license_api_server.py > /tmp/snf_license_server.log 2>&1 &
-    LICENSE_PID=$!
-    echo "  License server PID: $LICENSE_PID"
+    LICENSE_SERVER_PID=$!
+    echo "  License server PID: $LICENSE_SERVER_PID"
     
     sleep 3
     
     # Verify they started
-    if ! kill -0 $TEST_PID 2>/dev/null; then
+    if ! kill -0 $TEST_SERVER_PID 2>/dev/null; then
         echo -e "${RED}✗ Test server failed to start${NC}"
         cat /tmp/snf_test_server.log
         return 1
     fi
-    if ! kill -0 $LICENSE_PID 2>/dev/null; then
+    if ! kill -0 $LICENSE_SERVER_PID 2>/dev/null; then
         echo -e "${RED}✗ License server failed to start${NC}"
         cat /tmp/snf_license_server.log
         return 1
@@ -74,8 +77,12 @@ start_servers() {
 
 stop_servers() {
     echo -e "\n${YELLOW}▸ Stopping servers...${NC}"
-    kill $(pgrep -f "python3 test_server.py" 2>/dev/null) 2>/dev/null || true
-    kill $(pgrep -f "python3 license_api_server.py" 2>/dev/null) 2>/dev/null || true
+    if [ -n "$TEST_SERVER_PID" ]; then
+        kill $TEST_SERVER_PID 2>/dev/null || true
+    fi
+    if [ -n "$LICENSE_SERVER_PID" ]; then
+        kill $LICENSE_SERVER_PID 2>/dev/null || true
+    fi
     echo -e "${GREEN}✓ Servers stopped${NC}"
 }
 
