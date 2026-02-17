@@ -19,6 +19,9 @@ from flux_nodes.math import MathNode
 from flux_nodes.planner import PlannerNode
 from flux_nodes.vision import VisionNode
 from rag_manager import get_rag_manager
+from telemetry import get_telemetry_collector
+from update_manager import get_update_manager
+from admin_api import admin_bp
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -97,10 +100,47 @@ def _route_query(prompt: str, node_registry) -> Optional[Any]:
     
     return None
 
+def _validate_license_on_startup():
+    """Validate license at startup. Returns True if valid or not required."""
+    license_key = os.environ.get('SNF_LICENSE_KEY', '')
+    if not license_key:
+        logger.warning("No SNF_LICENSE_KEY set - running in unlicensed mode")
+        return True  # Allow startup without license for development
+
+    try:
+        from simple_license_check import validate_license
+        if validate_license(license_key):
+            logger.info("License validation successful")
+            return True
+        else:
+            logger.error("License validation failed")
+            return False
+    except ImportError:
+        logger.warning("License check module not available - skipping validation")
+        return True
+    except Exception as e:
+        logger.error(f"License validation error: {e}")
+        return False
+
+
 def create_app():
     """Create and configure the Flask application."""
+    # Validate license before starting
+    if not _validate_license_on_startup():
+        logger.critical("Cannot start: license validation failed")
+        sys.exit(1)
+
     app = Flask(__name__)
-    CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}}, supports_credentials=False)
+    CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization", "X-Admin-Secret"]}}, supports_credentials=False)
+
+    # Register admin API blueprint
+    app.register_blueprint(admin_bp)
+
+    # Initialize telemetry and update manager
+    telemetry = get_telemetry_collector()
+    telemetry.start()
+    updater = get_update_manager()
+    updater.start()
     
     # Initialize node registry
     node_registry = NodeRegistry()
@@ -295,6 +335,8 @@ def create_app():
         if request.method == 'OPTIONS':
             logger.info("OPTIONS request received for /query from origin: %s", request.headers.get('Origin', 'Unknown'))
             return '', 200
+        query_start = time.time()
+        telemetry.track_concurrent_start()
         try:
             data = request.get_json()
             if not data:
@@ -363,6 +405,10 @@ def create_app():
                 if follow_up_response.text and follow_up_response.text.strip():
                     response.text += " " + follow_up_response.text
             
+            # Record telemetry (anonymous — only node ID and timing)
+            elapsed_ms = (time.time() - query_start) * 1000
+            telemetry.record_query(node.node_id, elapsed_ms, success=True)
+            
             return jsonify({
                 'result': response.text,
                 'response': response.text,
@@ -372,7 +418,12 @@ def create_app():
             
         except Exception as e:
             logger.error(f"Query processing failed: {e}")
+            elapsed_ms = (time.time() - query_start) * 1000
+            telemetry.record_query('unknown', elapsed_ms, success=False)
+            telemetry.record_error('query_processing')
             return jsonify({'error': f'Query processing failed: {str(e)}'}), 500
+        finally:
+            telemetry.track_concurrent_end()
     
     # RAG Management Endpoints
     @app.route('/api/rag/status', methods=['GET'])
@@ -450,6 +501,33 @@ def create_app():
         except Exception as e:
             logger.error(f"Error searching dataset: {e}")
             return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/updates/check', methods=['GET'])
+    def check_updates():
+        """Check for available updates."""
+        result = updater.check_for_updates()
+        return jsonify(result)
+
+    @app.route('/api/license/status', methods=['GET'])
+    def license_status():
+        """Get current license status (non-sensitive info only)."""
+        license_key = os.environ.get('SNF_LICENSE_KEY', '')
+        if not license_key:
+            return jsonify({'licensed': False, 'message': 'No license configured'})
+        return jsonify({
+            'licensed': True,
+            'key_prefix': license_key[:4] + '...' if len(license_key) > 4 else '***',
+        })
+
+    @app.route('/api/telemetry/kpis', methods=['GET'])
+    def public_kpis():
+        """Get basic system KPIs (non-admin, limited data)."""
+        kpis = telemetry.get_kpi_summary()
+        return jsonify({
+            'uptime': kpis['uptime_formatted'],
+            'version': kpis['version'],
+            'node_availability': kpis['node_availability'],
+        })
     
     return app
 

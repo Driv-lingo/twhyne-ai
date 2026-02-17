@@ -9,7 +9,21 @@ services:
     volumes:
       - ./models:/app/models  # Persist model files outside container
       - ./logs:/app/logs      # Persist logs
+      - snf-data:/app/data    # Persist license cache, telemetry, updates
     environment:
       - NODE_ENV=production
       - PYTHONUNBUFFERED=1
+      - SNF_LICENSE_KEY=${SNF_LICENSE_KEY:-}
+      - LICENSE_API_URL=${LICENSE_API_URL:-https://sunny-imagination-production.up.railway.app}
+      - SNF_ADMIN_SECRET=${SNF_ADMIN_SECRET:-}
+      - APP_VERSION=${APP_VERSION:-1.0.0}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  snf-data:
