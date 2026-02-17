@@ -27,6 +27,9 @@ UPDATE_API = os.environ.get(
 # How often to check for updates (seconds)
 UPDATE_CHECK_INTERVAL = 86400  # 24 hours
 
+# Delay before first update check (seconds)
+INITIAL_CHECK_DELAY = 30
+
 # Local update state file
 UPDATE_STATE_DIR = Path(os.environ.get('DATA_DIR', '/app/data'))
 UPDATE_STATE_FILE = UPDATE_STATE_DIR / 'update_state.json'
@@ -169,7 +172,7 @@ class UpdateManager:
     def _check_loop(self):
         """Periodically check for updates."""
         # Initial check after a short delay
-        time.sleep(30)
+        time.sleep(INITIAL_CHECK_DELAY)
         self.check_for_updates()
 
         while self._running:

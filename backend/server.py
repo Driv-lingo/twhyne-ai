@@ -516,7 +516,7 @@ def create_app():
             return jsonify({'licensed': False, 'message': 'No license configured'})
         return jsonify({
             'licensed': True,
-            'key_prefix': license_key[:12] + '...' if len(license_key) > 12 else '***',
+            'key_prefix': license_key[:4] + '...' if len(license_key) > 4 else '***',
         })
 
     @app.route('/api/telemetry/kpis', methods=['GET'])

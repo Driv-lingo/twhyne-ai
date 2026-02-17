@@ -26,7 +26,7 @@ TELEMETRY_API = os.environ.get(
 )
 
 # How often to flush metrics to disk (seconds)
-FLUSH_INTERVAL = 300  # 5 minutes
+FLUSH_INTERVAL = int(os.environ.get('TELEMETRY_FLUSH_INTERVAL', 300))  # 5 minutes
 
 # How often to send telemetry to remote server (seconds)
 REPORT_INTERVAL = 3600  # 1 hour

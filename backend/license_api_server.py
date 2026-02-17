@@ -488,7 +488,18 @@ def check_for_updates():
     """
     current_version = request.args.get('current_version', '0.0.0')
 
-    update_available = current_version < CURRENT_RELEASE['latest_version']
+    update_available = False
+    try:
+        from packaging.version import parse as parse_version
+        update_available = parse_version(current_version) < parse_version(CURRENT_RELEASE['latest_version'])
+    except ImportError:
+        # Fallback: split version strings for comparison
+        def _version_tuple(v):
+            return tuple(int(x) for x in v.split('.') if x.isdigit())
+        try:
+            update_available = _version_tuple(current_version) < _version_tuple(CURRENT_RELEASE['latest_version'])
+        except (ValueError, TypeError):
+            update_available = current_version != CURRENT_RELEASE['latest_version']
 
     return jsonify({
         'current_version': current_version,

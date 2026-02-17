@@ -83,3 +83,8 @@ DOCKER_SETUP.md
 *.secret
 *.key
 .secrets/
+
+# Runtime data files
+backend/license_database.json
+data/
+telemetry/
