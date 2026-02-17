@@ -357,6 +357,187 @@ def extend_license():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/admin/licenses', methods=['GET'])
+def list_licenses():
+    """
+    List all licenses with aggregate info (admin endpoint).
+    No individual user PII is returned beyond email for license management.
+    
+    Query params:
+        admin_secret: Admin authentication secret
+    """
+    admin_secret = request.args.get('admin_secret', '')
+    if admin_secret != os.environ.get('SNF_ADMIN_SECRET'):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    now = datetime.now()
+    license_list = []
+    for key, data in LICENSES.items():
+        expiry = datetime.fromisoformat(data['expiry_date'])
+        license_list.append({
+            'license_key': key,
+            'email': data.get('email', ''),
+            'created_at': data.get('created_at', ''),
+            'expiry_date': data['expiry_date'],
+            'is_active': data.get('is_active', True),
+            'is_expired': expiry < now,
+            'device_bound': data.get('device_id') is not None,
+            'validation_count': data.get('validation_count', 0),
+            'last_validated': data.get('last_validated'),
+        })
+
+    return jsonify({
+        'total': len(license_list),
+        'active': sum(1 for lic in license_list if lic['is_active'] and not lic['is_expired']),
+        'expired': sum(1 for lic in license_list if lic['is_expired']),
+        'revoked': sum(1 for lic in license_list if not lic['is_active']),
+        'licenses': license_list,
+    })
+
+
+@app.route('/api/admin/kpis', methods=['GET'])
+def admin_kpi_summary():
+    """
+    Get aggregate KPI summary across all instances (admin endpoint).
+    No individual user data - only aggregate system metrics.
+    
+    Query params:
+        admin_secret: Admin authentication secret
+    """
+    admin_secret = request.args.get('admin_secret', '')
+    if admin_secret != os.environ.get('SNF_ADMIN_SECRET'):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    now = datetime.now()
+    total = len(LICENSES)
+    active = sum(1 for lic in LICENSES.values()
+                 if lic.get('is_active', True) and
+                 datetime.fromisoformat(lic['expiry_date']) > now)
+    expired = sum(1 for lic in LICENSES.values()
+                  if datetime.fromisoformat(lic['expiry_date']) <= now)
+    revoked = sum(1 for lic in LICENSES.values()
+                  if not lic.get('is_active', True))
+    total_validations = sum(lic.get('validation_count', 0) for lic in LICENSES.values())
+
+    # Aggregate instance telemetry
+    telemetry_summary = {
+        'total_instances_reported': len(TELEMETRY_STORE),
+        'aggregate_queries': sum(t.get('total_queries', 0) for t in TELEMETRY_STORE.values()),
+        'aggregate_errors': sum(t.get('error_count', 0) for t in TELEMETRY_STORE.values()),
+    }
+
+    return jsonify({
+        'license_kpis': {
+            'total_licenses': total,
+            'active_licenses': active,
+            'expired_licenses': expired,
+            'revoked_licenses': revoked,
+            'total_validations': total_validations,
+        },
+        'telemetry': telemetry_summary,
+    })
+
+
+# Telemetry ingestion - receives anonymous metrics from client instances
+TELEMETRY_STORE = {}
+
+@app.route('/api/telemetry/report', methods=['POST'])
+def receive_telemetry():
+    """
+    Receive anonymous aggregate telemetry from client instances.
+    No PII or query content is stored.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data'}), 400
+
+        instance_id = data.get('instance_id', 'unknown')
+        TELEMETRY_STORE[instance_id] = {
+            'total_queries': data.get('total_queries', 0),
+            'queries_per_hour': data.get('queries_per_hour', 0),
+            'avg_response_time_ms': data.get('avg_response_time_ms', 0),
+            'error_rate': data.get('error_rate', 0),
+            'error_count': data.get('error_count', 0),
+            'uptime_hours': data.get('uptime_hours', 0),
+            'version': data.get('version', ''),
+            'last_report': datetime.now().isoformat(),
+        }
+
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Telemetry ingestion error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Update management - serves version manifest to client instances
+CURRENT_RELEASE = {
+    'latest_version': os.environ.get('LATEST_APP_VERSION', '1.0.0'),
+    'release_notes': os.environ.get('RELEASE_NOTES', ''),
+    'update_url': os.environ.get('UPDATE_URL', 'https://github.com/Driv-lingo/twhyne-ai/releases/latest'),
+}
+
+@app.route('/api/updates/check', methods=['GET'])
+def check_for_updates():
+    """
+    Check if a newer version is available.
+    Called by client instances periodically.
+    
+    Query params:
+        current_version: The version the client is running
+    """
+    current_version = request.args.get('current_version', '0.0.0')
+
+    update_available = current_version < CURRENT_RELEASE['latest_version']
+
+    return jsonify({
+        'current_version': current_version,
+        'latest_version': CURRENT_RELEASE['latest_version'],
+        'update_available': update_available,
+        'release_notes': CURRENT_RELEASE['release_notes'] if update_available else '',
+        'update_url': CURRENT_RELEASE['update_url'] if update_available else '',
+    })
+
+
+@app.route('/api/admin/updates/set', methods=['POST'])
+def admin_set_update():
+    """
+    Set the latest release version and notes (admin endpoint).
+    Used to push update notifications to all client instances.
+    
+    Request:
+        {
+            "admin_secret": "...",
+            "latest_version": "2.0.0",
+            "release_notes": "Bug fixes and improvements",
+            "update_url": "https://..."
+        }
+    """
+    try:
+        data = request.get_json()
+        admin_secret = data.get('admin_secret')
+
+        if admin_secret != os.environ.get('SNF_ADMIN_SECRET'):
+            return jsonify({'error': 'Unauthorized'}), 401
+
+        if data.get('latest_version'):
+            CURRENT_RELEASE['latest_version'] = data['latest_version']
+        if data.get('release_notes') is not None:
+            CURRENT_RELEASE['release_notes'] = data['release_notes']
+        if data.get('update_url'):
+            CURRENT_RELEASE['update_url'] = data['update_url']
+
+        logger.info(f"Release updated to v{CURRENT_RELEASE['latest_version']}")
+
+        return jsonify({
+            'success': True,
+            'release': CURRENT_RELEASE,
+        })
+    except Exception as e:
+        logger.error(f"Update set error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5003))
     
