@@ -101,10 +101,10 @@ def _route_query(prompt: str, node_registry) -> Optional[Any]:
     return None
 
 def _validate_license_on_startup():
-    """Validate license at startup. Returns True if valid or not required."""
+    """Validate license at startup. Returns True if valid, not required, or check unavailable."""
     license_key = os.environ.get('SNF_LICENSE_KEY', '')
     if not license_key:
-        logger.warning("No SNF_LICENSE_KEY set - running in unlicensed mode")
+        logger.warning("No SNF_LICENSE_KEY set - running in unlicensed/development mode")
         return True  # Allow startup without license for development
 
     try:

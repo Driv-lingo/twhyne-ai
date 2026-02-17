@@ -40,7 +40,7 @@ def require_admin(f):
             provided_secret = auth_header[7:]
 
         if not ADMIN_SECRET:
-            return jsonify({'error': 'Admin access not configured (SNF_ADMIN_SECRET not set)'}), 503
+            return jsonify({'error': 'Admin access is not available'}), 503
 
         if provided_secret != ADMIN_SECRET:
             return jsonify({'error': 'Unauthorized'}), 401
