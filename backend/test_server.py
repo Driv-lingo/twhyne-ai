@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-Simplified test server for CI environment.
-This version doesn't load heavy model files and provides basic endpoints for testing.
+Simplified test server for CI and local demo environments.
+This version doesn't load heavy model files and provides mock endpoints
+that match the real server's API so the frontend can connect.
 """
 
 import logging
+import time
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -12,10 +14,84 @@ from flask_cors import CORS
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Track start time for uptime calculation
+_start_time = time.time()
+
+# Mock node definitions matching the real server's node registry
+MOCK_NODES = [
+    {
+        'id': 'language-mistral-7b',
+        'node_id': 'language-mistral-7b',
+        'name': 'Language (Mistral-7B)',
+        'description': 'General language understanding and generation (demo mode)',
+        'status': 'online',
+        'capabilities': ['text-generation', 'question-answering', 'summarization'],
+        'keywords': ['language', 'text', 'general'],
+        'is_remote': False,
+        'version': '1.0.0',
+    },
+    {
+        'id': 'code-codellama-7b',
+        'node_id': 'code-codellama-7b',
+        'name': 'Code (CodeLlama-7B)',
+        'description': 'Code generation and understanding (demo mode)',
+        'status': 'online',
+        'capabilities': ['code-generation', 'code-analysis'],
+        'keywords': ['code', 'programming', 'function'],
+        'is_remote': False,
+        'version': '1.0.0',
+    },
+    {
+        'id': 'math-llm-eval',
+        'node_id': 'math-llm-eval',
+        'name': 'Math (LLM Eval)',
+        'description': 'Mathematical problem solving (demo mode)',
+        'status': 'online',
+        'capabilities': ['math', 'calculation'],
+        'keywords': ['math', 'calculate', 'solve'],
+        'is_remote': False,
+        'version': '1.0.0',
+    },
+    {
+        'id': 'planner-mistral-7b',
+        'node_id': 'planner-mistral-7b',
+        'name': 'Planner (Mistral-7B)',
+        'description': 'Task planning and decomposition (demo mode)',
+        'status': 'online',
+        'capabilities': ['planning', 'task-decomposition'],
+        'keywords': ['plan', 'schedule', 'organize'],
+        'is_remote': False,
+        'version': '1.0.0',
+    },
+    {
+        'id': 'vision-llava-1.6-7b',
+        'node_id': 'vision-llava-1.6-7b',
+        'name': 'Vision (LLaVA-1.6-7B)',
+        'description': 'Image captioning and visual QA (demo mode)',
+        'status': 'online',
+        'capabilities': ['image-captioning', 'visual-qa'],
+        'keywords': ['image', 'picture', 'visual'],
+        'is_remote': False,
+        'version': '1.0.0',
+    },
+]
+
+# Demo responses by node type
+DEMO_RESPONSES = {
+    'language-mistral-7b': "This is a demo response from the Language node. In production, this would use a Mistral-7B model for natural language understanding and generation.",
+    'code-codellama-7b': "```python\n# Demo response from Code node\ndef hello():\n    return 'In production, CodeLlama-7B generates real code'\n\nhello()\n```",
+    'math-llm-eval': "Demo: The answer is 42. In production, the Math node uses LLM evaluation with deterministic fallback for accurate calculations.",
+    'planner-mistral-7b': "Demo Plan:\n1. Step 1: Analyze the task\n2. Step 2: Break it into subtasks\n3. Step 3: Execute each subtask\n\nIn production, the Planner node creates detailed task plans.",
+    'vision-llava-1.6-7b': "Demo: [Image analysis would appear here]. In production, LLaVA-1.6-7B analyzes images and answers visual questions.",
+}
+
+
 def create_test_app():
-    """Create a simplified Flask app for testing."""
+    """Create a simplified Flask app for testing and local demo."""
     app = Flask(__name__)
-    CORS(app, origins=["http://localhost:3001", "http://127.0.0.1:3001", "https://twhyne.com"])
+    # NOTE: Allow all origins for local demo/development use only.
+    # The production server.py uses more restrictive CORS settings.
+    CORS(app, resources={r"/*": {"origins": "*"}})
     
     @app.route('/status', methods=['GET'])
     def status():
@@ -28,20 +104,83 @@ def create_test_app():
     
     @app.route('/nodes', methods=['GET'])
     def get_nodes():
-        """Get available nodes (mock for testing)."""
-        return jsonify({
-            'nodes': [
-                {'id': 'test', 'name': 'Test Node', 'status': 'active'}
-            ]
-        })
+        """Get available nodes in the format expected by the frontend."""
+        return jsonify(MOCK_NODES)
     
     @app.route('/query', methods=['POST'])
     def query():
-        """Simple query endpoint for testing."""
+        """Query endpoint that returns demo responses."""
+        data = request.get_json() or {}
+        prompt = data.get('prompt', '')
+        node_id = data.get('node_id', 'language-mistral-7b')
+
+        # Simple keyword routing if auto-routed
+        if not node_id or node_id == 'auto-routed':
+            prompt_lower = prompt.lower()
+            if any(w in prompt_lower for w in ['code', 'function', 'class', 'programming']):
+                node_id = 'code-codellama-7b'
+            elif any(w in prompt_lower for w in ['calculate', 'math', 'solve', '+', '-', '*', '/']):
+                node_id = 'math-llm-eval'
+            elif any(w in prompt_lower for w in ['plan', 'schedule', 'organize', 'task']):
+                node_id = 'planner-mistral-7b'
+            elif any(w in prompt_lower for w in ['image', 'picture', 'photo', 'visual']):
+                node_id = 'vision-llava-1.6-7b'
+            else:
+                node_id = 'language-mistral-7b'
+
+        response_text = DEMO_RESPONSES.get(node_id, DEMO_RESPONSES['language-mistral-7b'])
+
         return jsonify({
-            'response': 'Test response from CI server',
-            'node_used': 'test',
+            'result': response_text,
+            'response': response_text,
+            'node_id': node_id,
+            'node_used': node_id,
+            'processing_time': 0,
             'status': 'success'
+        })
+    
+    @app.route('/upload', methods=['POST'])
+    def upload():
+        """Handle file uploads (mock)."""
+        return jsonify({'filepath': '/tmp/mock_upload.jpg', 'message': 'File uploaded (demo mode)'})
+
+    @app.route('/feedback', methods=['POST'])
+    def feedback():
+        """Handle feedback submissions."""
+        return jsonify({'status': 'ok', 'message': 'Feedback received (demo mode)'})
+
+    @app.route('/api/rag/status', methods=['GET'])
+    def rag_status():
+        """RAG system status."""
+        return jsonify({'available': False, 'message': 'RAG not available in demo mode'})
+
+    @app.route('/api/rag/datasets', methods=['GET'])
+    def rag_datasets():
+        """List RAG datasets."""
+        return jsonify({'datasets': []})
+
+    @app.route('/api/telemetry/kpis', methods=['GET'])
+    def telemetry_kpis():
+        """Public KPI endpoint."""
+        uptime_s = int(time.time() - _start_time)
+        return jsonify({
+            'uptime': f'{uptime_s // 3600}h {(uptime_s % 3600) // 60}m',
+            'version': '1.0.0',
+            'node_availability': {n['node_id']: {'available': True} for n in MOCK_NODES},
+        })
+
+    @app.route('/api/license/status', methods=['GET'])
+    def license_status():
+        """License status endpoint."""
+        return jsonify({'licensed': False, 'message': 'Demo mode - no license required'})
+
+    @app.route('/api/updates/check', methods=['GET'])
+    def updates_check():
+        """Update check endpoint."""
+        return jsonify({
+            'current_version': '1.0.0',
+            'latest_version': '1.0.0',
+            'update_available': False,
         })
     
     @app.route('/download/<license_key>')
@@ -146,47 +285,6 @@ def create_test_app():
             logger.error(f"Error in registration: {e}")
             return jsonify({'error': f'Registration failed: {str(e)}'}), 500
     
-    # Add CORS configuration for all endpoints
-    @app.after_request
-    def add_cors_headers(response):
-        """Add CORS headers to every response, ensuring no duplicates."""
-        response.headers.pop('Access-Control-Allow-Origin', None)  # Remove any existing header
-        response.headers.add('Access-Control-Allow-Origin', 'https://twhyne.com')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        return response
-    
-    # Handle OPTIONS requests explicitly for all endpoints
-    @app.route('/api/registration/register', methods=['OPTIONS'])
-    def register_options():
-        """Handle CORS preflight for registration endpoint."""
-        response = jsonify({'status': 'ok'})
-        response.headers.pop('Access-Control-Allow-Origin', None)  # Remove any existing header
-        response.headers.add('Access-Control-Allow-Origin', 'https://twhyne.com')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        return response, 200
-    
-    @app.route('/api/registration/validate', methods=['OPTIONS'])
-    def validate_options():
-        """Handle CORS preflight for validation endpoint."""
-        response = jsonify({'status': 'ok'})
-        response.headers.pop('Access-Control-Allow-Origin', None)  # Remove any existing header
-        response.headers.add('Access-Control-Allow-Origin', 'https://twhyne.com')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        return response, 200
-    
-    @app.route('/api/registration/renew', methods=['OPTIONS'])
-    def renew_options():
-        """Handle CORS preflight for renewal endpoint."""
-        response = jsonify({'status': 'ok'})
-        response.headers.pop('Access-Control-Allow-Origin', None)  # Remove any existing header
-        response.headers.add('Access-Control-Allow-Origin', 'https://twhyne.com')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        return response, 200
-    
     return app
 
 if __name__ == '__main__':
@@ -194,9 +292,10 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5002))
     
     print("=" * 60)
-    print("🧪 Starting Test SNF-AI Server for CI")
+    print("🧪 Starting SNF-AI Windsurf (Demo Mode)")
     print(f"📝 Status endpoint: http://localhost:{port}/status")
     print(f"🔧 API endpoint: http://localhost:{port}/query")
+    print(f"📊 Nodes endpoint: http://localhost:{port}/nodes")
     print("=" * 60)
     
     app = create_test_app()

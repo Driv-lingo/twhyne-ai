@@ -15,6 +15,7 @@ Set environment variables:
 import os
 import sys
 import json
+import time
 import unittest
 import requests
 
@@ -39,9 +40,10 @@ class TestServerIntegration(unittest.TestCase):
         resp = requests.get(f'{TEST_SERVER_URL}/nodes', timeout=5)
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertIn('nodes', data)
-        self.assertIsInstance(data['nodes'], list)
-        self.assertTrue(len(data['nodes']) > 0)
+        self.assertIsInstance(data, list)
+        self.assertTrue(len(data) > 0)
+        # Each node should have node_id
+        self.assertIn('node_id', data[0])
 
     def test_query_endpoint(self):
         """Test POST /query returns a response."""
@@ -199,7 +201,7 @@ class LicenseServerIntegration(unittest.TestCase):
         baseline_queries = baseline_resp.json()['telemetry']['aggregate_queries']
 
         report = {
-            'instance_id': 'integration-test-instance',
+            'instance_id': f'integration-test-{int(time.time())}',
             'total_queries': 100,
             'queries_per_hour': 10.0,
             'avg_response_time_ms': 250.0,
