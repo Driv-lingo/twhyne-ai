@@ -33,7 +33,7 @@ COPY start-docker.sh ./
 RUN chmod +x start-docker.sh
 
 # Expose ports
-EXPOSE 3000 5001 5002
+EXPOSE 3000 5002
 
 # Start
 CMD ["./start-docker.sh"]

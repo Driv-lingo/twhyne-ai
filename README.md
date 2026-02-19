@@ -132,7 +132,7 @@ docker-compose up -d
    docker run -d \
      --name snf-ai-windsurf \
      -p 3000:3000 \
-     -p 5001:5001 \
+     -p 5002:5002 \
      -v snf_models:/app/models \
      -v snf_logs:/app/logs \
      TWHYNE/twhyne:latest
@@ -140,7 +140,7 @@ docker-compose up -d
 
 ### Access Your Application
 - **Frontend**: Open `http://localhost:3000` in your browser
-- **Backend API**: Available at `http://localhost:5001`
+- **Backend API**: Available at `http://localhost:5002`
 
 ### Important Notes
 - **First Run**: Model download takes 10-15 minutes (downloads ~8GB of AI models)

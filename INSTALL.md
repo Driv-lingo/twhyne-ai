@@ -13,7 +13,7 @@ services:
     image: twhyne/twhyne:latest
     ports:
       - "3000:3000"  # Frontend
-      - "5001:5001"  # Backend API  
+      - "5002:5002"  # Backend API  
       - "5002:5002"  # Backend API (fallback)
     volumes:
       - snf_models:/app/models      # Persist model files

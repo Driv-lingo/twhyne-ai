@@ -102,7 +102,7 @@ restore_data() {
     echo ""
     echo "Start container with:"
     echo "  docker run -d --name twhyne -e SNF_LICENSE_KEY=\"...\" \\"
-    echo "    -p 3000:3000 -p 5001:5001 \\"
+    echo "    -p 3000:3000 -p 5002:5002 \\"
     echo "    --mount source=snf_models,target=/app/models \\"
     echo "    --mount source=snf_data,target=/app/data \\"
     echo "    --mount source=snf_conversations,target=/app/conversations \\"

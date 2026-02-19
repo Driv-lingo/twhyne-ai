@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile.simple
     ports:
-      - "5001:5001"  # Backend API
+      - "5002:5002"  # Backend API
     volumes:
       - snf_models:/app/models      # Persist model files
       - snf_logs:/app/logs          # Persist logs

@@ -103,7 +103,6 @@ if [ -d "frontend/build" ]; then
     cd frontend
     npx serve -s build -l 3000 &
     cd ..
-    exit 1
 fi
 
 echo -e "${GREEN}✅ Backend running (PID: $BACKEND_PID)${NC}"

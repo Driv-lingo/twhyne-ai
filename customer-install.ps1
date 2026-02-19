@@ -32,7 +32,7 @@ docker run -d `
   --name twhyne `
   -e SNF_LICENSE_KEY="$LICENSE_KEY" `
   -p 3000:3000 `
-  -p 5001:5001 `
+  -p 5002:5002 `
   --mount source=snf_models,target=/app/models `
   --mount source=snf_logs,target=/app/logs `
   --restart unless-stopped `

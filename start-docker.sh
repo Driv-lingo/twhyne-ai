@@ -20,7 +20,7 @@ python3 -m http.server 3000 &
 FRONTEND_PID=$!
 
 # Start backend server
-echo "Starting backend server on port 5001..."
+echo "Starting backend server on port 5002..."
 cd /app/backend
-export PORT=5001
+export PORT=5002
 python server.py

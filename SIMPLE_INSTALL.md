@@ -47,12 +47,12 @@ chmod +x customer-install.sh
 
 **Windows (PowerShell):**
 ```powershell
-docker run -d --name twhyne -e SNF_LICENSE_KEY="YOUR-KEY-HERE" -p 3000:3000 -p 5001:5001 --mount source=snf_models,target=/app/models --mount source=snf_logs,target=/app/logs --restart unless-stopped twhyne/twhyne:prod
+docker run -d --name twhyne -e SNF_LICENSE_KEY="YOUR-KEY-HERE" -p 3000:3000 -p 5002:5002 --mount source=snf_models,target=/app/models --mount source=snf_logs,target=/app/logs --restart unless-stopped twhyne/twhyne:prod
 ```
 
 **Mac/Linux (Terminal):**
 ```bash
-docker run -d --name twhyne -e SNF_LICENSE_KEY="YOUR-KEY-HERE" -p 3000:3000 -p 5001:5001 --mount source=snf_models,target=/app/models --mount source=snf_logs,target=/app/logs --restart unless-stopped twhyne/twhyne:prod
+docker run -d --name twhyne -e SNF_LICENSE_KEY="YOUR-KEY-HERE" -p 3000:3000 -p 5002:5002 --mount source=snf_models,target=/app/models --mount source=snf_logs,target=/app/logs --restart unless-stopped twhyne/twhyne:prod
 ```
 
 Replace `YOUR-KEY-HERE` with your actual license key.
