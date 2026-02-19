@@ -82,7 +82,7 @@ const DownloadPage = ({ onNavigate }) => {
           <h3><FaSyncAlt /> How Clients Get Updates</h3>
           <p>
             Twhyne AI uses Docker images for versioned releases. Each version is
-            tagged (e.g. <code>twhyne/twhyne:1.0.0</code>) and
+            tagged (e.g. <code>twhyne/twhyne:1.0.0</code>) and{' '}
             <code>:latest</code> always points to the newest stable release.
           </p>
           <div className="update-steps">
