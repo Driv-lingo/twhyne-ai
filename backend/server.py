@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 import sys
 from typing import Optional, Any
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 # Add the flux_nodes directory to the path
@@ -215,6 +215,27 @@ def create_app():
     except Exception as e:
         logger.error(f"Failed to load vision node: {e}")
     
+    # Serve frontend static files and provide root health endpoint
+    frontend_build_dir = Path(__file__).parent.parent / 'frontend' / 'build'
+
+    @app.route('/')
+    def index():
+        """Serve frontend or return health status."""
+        if frontend_build_dir.is_dir() and (frontend_build_dir / 'index.html').exists():
+            return send_from_directory(str(frontend_build_dir), 'index.html')
+        return jsonify({'status': 'ok', 'service': 'SNF-AI Windsurf'})
+
+    @app.route('/<path:path>')
+    def serve_frontend(path):
+        """Serve frontend static files, fallback to index.html for SPA routing."""
+        if frontend_build_dir.is_dir():
+            file_path = frontend_build_dir / path
+            if file_path.exists() and file_path.is_file():
+                return send_from_directory(str(frontend_build_dir), path)
+            if (frontend_build_dir / 'index.html').exists():
+                return send_from_directory(str(frontend_build_dir), 'index.html')
+        return jsonify({'error': 'Not found'}), 404
+
     @app.route('/status', methods=['GET', 'OPTIONS'])
     def health_check():
         """Health check endpoint."""

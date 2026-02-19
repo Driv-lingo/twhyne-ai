@@ -49,8 +49,8 @@ RUN pip install httpx
 
 # Models will be downloaded at runtime to avoid build failures
 
-# Expose ports for frontend and backend - Railway will map these
-EXPOSE 3000 5001
+# Expose port for the application - Railway will set PORT env var
+EXPOSE 5002
 
 # Set executable permissions on start script
 RUN chmod +x /app/start_with_license.sh
