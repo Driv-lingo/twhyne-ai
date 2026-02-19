@@ -10,7 +10,7 @@ docker rm snf-test 2>/dev/null || true
 echo "Starting container..."
 docker run -d --name snf-test \
   -p 3000:3000 \
-  -p 5001:5001 \
+  -p 5002:5002 \
   twhyne/twhyne:prod-local
 
 echo ""
@@ -19,8 +19,8 @@ sleep 10
 
 # Test backend
 echo ""
-echo "Testing backend (port 5001)..."
-curl -s http://localhost:5001/status | jq . || echo "❌ Backend not responding"
+echo "Testing backend (port 5002)..."
+curl -s http://localhost:5002/status | jq . || echo "❌ Backend not responding"
 
 # Test frontend
 echo ""

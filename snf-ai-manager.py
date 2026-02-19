@@ -295,7 +295,7 @@ class SNFAIManager:
                     "--name", "twhyne",
                     "-e", f"SNF_LICENSE_KEY={license_key}",
                     "-p", "3000:3000",
-                    "-p", "5001:5001",
+                    "-p", "5002:5002",
                     "--mount", "source=snf_models,target=/app/models",
                     "--mount", "source=snf_logs,target=/app/logs",
                     "--mount", "source=snf_data,target=/app/data",

@@ -30,7 +30,7 @@ if [ $? -eq 0 ]; then
     echo "🚀 Starting new container with fixed ports..."
     docker run -d --name twhyne \
       -p 3000:3000 \
-      -p 5001:5001 \
+      -p 5002:5002 \
       -v snf_models:/app/models \
       -v snf_logs:/app/logs \
       twhyne/twhyne:prod
@@ -40,7 +40,7 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "📍 Access URLs:"
     echo "   Frontend: http://localhost:3000"
-    echo "   Backend:  http://localhost:5001"
+    echo "   Backend:  http://localhost:5002"
     echo ""
     echo "📋 Useful commands:"
     echo "   View logs:    docker logs -f twhyne"

@@ -27,7 +27,7 @@ RUN echo '#!/bin/bash\necho "Starting SNF-AI Windsurf Backend..."\ncd /app/backe
 RUN chmod +x /app/start.sh
 
 # Expose backend port
-EXPOSE 5001
+EXPOSE 5002
 
 # Run the start script
 CMD ["/app/start.sh"]

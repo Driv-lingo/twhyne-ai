@@ -15,7 +15,7 @@ docker pull twhyne/twhyne:prod
 echo "Starting new container..."
 docker run -d --name twhyne \
   -p 3000:3000 \
-  -p 5001:5001 \
+  -p 5002:5002 \
   -v snf_models:/app/models \
   -v snf_logs:/app/logs \
   twhyne/twhyne:prod
@@ -23,6 +23,6 @@ docker run -d --name twhyne \
 echo ""
 echo "✅ Update complete!"
 echo "Frontend: http://localhost:3000"
-echo "Backend API: http://localhost:5001"
+echo "Backend API: http://localhost:5002"
 echo ""
 echo "Check logs with: docker logs -f twhyne"

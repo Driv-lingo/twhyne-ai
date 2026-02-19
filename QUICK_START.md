@@ -10,7 +10,7 @@ docker pull twhyne/twhyne:prod
 docker run -d \
   --name twhyne \
   -p 3000:3000 \
-  -p 5001:5001 \
+  -p 5002:5002 \
   -v snf_models:/app/models \
   -v snf_logs:/app/logs \
   twhyne/twhyne:prod
@@ -64,7 +64,7 @@ docker pull twhyne/twhyne:prod
 docker run -d \
   --name twhyne \
   -p 3000:3000 \
-  -p 5001:5001 \
+  -p 5002:5002 \
   -v snf_models:/app/models \
   -v snf_logs:/app/logs \
   twhyne/twhyne:prod

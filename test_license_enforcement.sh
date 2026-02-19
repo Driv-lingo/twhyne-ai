@@ -11,7 +11,7 @@ echo "Expected: Container should START (license check is optional)"
 echo "------------------------------------------------------------"
 
 docker run -d --rm --name test-no-license \
-  -p 3001:3000 -p 5003:5001 \
+  -p 3001:3000 -p 5003:5002 \
   twhyne/twhyne:licensed
 
 sleep 5
@@ -37,7 +37,7 @@ echo "------------------------------------------------------------"
 
 docker run --rm --name test-invalid-license \
   -e SNF_LICENSE_KEY="SNF-INVALID-KEY" \
-  -p 3001:3000 -p 5003:5001 \
+  -p 3001:3000 -p 5003:5002 \
   twhyne/twhyne:licensed 2>&1 | head -20
 
 echo ""
@@ -52,7 +52,7 @@ echo "------------------------------------------------------------"
 # Use the valid license key
 docker run -d --name test-valid-license \
   -e SNF_LICENSE_KEY="SNF-D8F8F6C3-E44EC43F" \
-  -p 3001:3000 -p 5003:5001 \
+  -p 3001:3000 -p 5003:5002 \
   twhyne/twhyne:licensed
 
 sleep 5

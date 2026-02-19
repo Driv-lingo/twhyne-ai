@@ -7,7 +7,7 @@
 docker run -d \
   --name twhyne \
   -p 3000:3000 \
-  -p 5001:5001 \
+  -p 5002:5002 \
   -v snf_models:/app/models \
   -v snf_logs:/app/logs \
   twhyne/twhyne:prod
@@ -23,7 +23,7 @@ services:
     image: twhyne/twhyne:prod
     ports:
       - "3000:3000"  # Frontend
-      - "5001:5001"  # Backend API
+      - "5002:5002"  # Backend API
     volumes:
       - snf_models:/app/models
       - snf_logs:/app/logs
@@ -41,8 +41,8 @@ docker-compose up -d
 
 ## 🌐 Access
 - **Frontend UI**: http://localhost:3000
-- **API**: http://localhost:5001/query
-- **Status**: http://localhost:5001/status
+- **API**: http://localhost:5002/query
+- **Status**: http://localhost:5002/status
 
 ## 📋 Requirements
 - Docker installed
