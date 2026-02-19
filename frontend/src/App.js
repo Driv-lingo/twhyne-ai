@@ -24,6 +24,8 @@ import SignUpPage from './components/SignUpPage';
 import './components/SignUpPage.css';
 import DownloadPage from './components/DownloadPage';
 import './components/DownloadPage.css';
+import UpdateBanner from './components/UpdateBanner';
+import './components/UpdateBanner.css';
 import { 
   FaCode, 
   FaCalculator, 
@@ -640,6 +642,9 @@ function App() {
 
   return (
     <div className="app">
+      {/* Update notification banner */}
+      <UpdateBanner />
+      
       {/* Conversation Manager */}
       <ConversationManager
         currentConversation={currentConversation}

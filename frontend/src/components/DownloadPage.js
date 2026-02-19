@@ -2,12 +2,22 @@
 // SPDX-License-Identifier: MIT
 
 import React from 'react';
-import { FaWindows, FaApple, FaDocker, FaFileArchive } from 'react-icons/fa';
+import { FaWindows, FaApple, FaDocker, FaFileArchive, FaSyncAlt } from 'react-icons/fa';
 import './DownloadPage.css';
 
 const GITHUB_RELEASE_BASE = 'https://github.com/Driv-lingo/twhyne-ai/releases';
+const DOCKER_IMAGE = 'twhyne/twhyne';
 
 const downloads = [
+  {
+    id: 'docker',
+    title: 'Docker (Recommended)',
+    icon: <FaDocker />,
+    description: 'Pull the official Docker image — the standard way to install and update.',
+    command: `docker pull ${DOCKER_IMAGE}:latest`,
+    href: `https://hub.docker.com/r/${DOCKER_IMAGE}`,
+    label: 'View on Docker Hub',
+  },
   {
     id: 'windows',
     title: 'Windows',
@@ -23,15 +33,6 @@ const downloads = [
     description: 'macOS package with shell scripts for quick start.',
     fileName: 'SNF-AI-Mac.zip',
     href: `${GITHUB_RELEASE_BASE}/latest/download/SNF-AI-Mac.zip`,
-  },
-  {
-    id: 'docker',
-    title: 'Docker',
-    icon: <FaDocker />,
-    description: 'Docker Compose setup for containerized deployment.',
-    fileName: 'docker-compose.yml',
-    href: `${GITHUB_RELEASE_BASE}/latest`,
-    label: 'View Release',
   },
   {
     id: 'source',
@@ -55,11 +56,16 @@ const DownloadPage = ({ onNavigate }) => {
 
         <div className="download-grid">
           {downloads.map((item) => (
-            <div key={item.id} className="download-card">
+            <div key={item.id} className={`download-card ${item.id === 'docker' ? 'recommended' : ''}`}>
               <div className="download-icon">{item.icon}</div>
               <h3>{item.title}</h3>
               <p>{item.description}</p>
-              <span className="download-filename">{item.fileName}</span>
+              {item.command && (
+                <code className="download-command">{item.command}</code>
+              )}
+              {item.fileName && (
+                <span className="download-filename">{item.fileName}</span>
+              )}
               <a
                 href={item.href}
                 className="download-button"
@@ -70,6 +76,38 @@ const DownloadPage = ({ onNavigate }) => {
               </a>
             </div>
           ))}
+        </div>
+
+        <div className="update-instructions">
+          <h3><FaSyncAlt /> How Clients Get Updates</h3>
+          <p>
+            Twhyne AI uses Docker images for versioned releases. Each version is
+            tagged (e.g. <code>twhyne/twhyne:1.0.0</code>) and
+            <code>:latest</code> always points to the newest stable release.
+          </p>
+          <div className="update-steps">
+            <div className="update-step">
+              <span className="step-number">1</span>
+              <div>
+                <strong>Pull the latest image</strong>
+                <code>docker pull {DOCKER_IMAGE}:latest</code>
+              </div>
+            </div>
+            <div className="update-step">
+              <span className="step-number">2</span>
+              <div>
+                <strong>Restart the container</strong>
+                <code>docker compose up -d</code>
+              </div>
+            </div>
+            <div className="update-step">
+              <span className="step-number">3</span>
+              <div>
+                <strong>Verify</strong>
+                <span>The app checks for updates automatically and shows a banner when a new version is available.</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="download-footer-links">

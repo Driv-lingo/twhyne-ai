@@ -63,6 +63,11 @@
   border-color: rgba(99, 102, 241, 0.3);
 }
 
+.download-card.recommended {
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.1);
+}
+
 .download-icon {
   font-size: 2.5rem;
   margin-bottom: 0.75rem;
@@ -90,6 +95,18 @@
   font-family: monospace;
 }
 
+.download-command {
+  display: block;
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--text-accent);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-family: monospace;
+  margin-bottom: 1rem;
+  word-break: break-all;
+}
+
 .download-button {
   display: inline-block;
   padding: 0.6rem 1.5rem;
@@ -108,6 +125,91 @@
   transform: translateY(-2px);
   box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
   color: white;
+}
+
+/* Update instructions section */
+.update-instructions {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid rgba(99, 102, 241, 0.1);
+}
+
+.update-instructions h3 {
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.update-instructions > p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.update-instructions code {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--text-accent);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.82rem;
+}
+
+.update-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.update-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-mid) 100%);
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.update-step div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.update-step strong {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.update-step span {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.update-step code {
+  display: inline-block;
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--text-accent);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  font-family: monospace;
 }
 
 .download-footer-links {
