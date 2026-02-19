@@ -215,8 +215,7 @@ def create_app():
     except Exception as e:
         logger.error(f"Failed to load vision node: {e}")
     
-    # Initialize node registry
-    node_registry = NodeRegistry()
+    @app.route('/status', methods=['GET', 'OPTIONS'])
     def health_check():
         """Health check endpoint."""
         if request.method == 'OPTIONS':
