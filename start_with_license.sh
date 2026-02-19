@@ -19,34 +19,23 @@ echo ""
 echo "Step 2: Starting application..."
 echo "============================================================"
 
-# Step 2: Start the backend server
+# Step 2: Start the backend server (also serves frontend static files)
 cd /app/backend
-# Run server directly (app_launcher.py uses GUI which doesn't work in Docker)
 python3 server.py &
 BACKEND_PID=$!
-
-# Step 3: Start the frontend server (if exists)
-if [ -d "/app/frontend" ]; then
-    cd /app/frontend
-    if [ -f "package.json" ]; then
-        npm start &
-        FRONTEND_PID=$!
-    fi
-fi
 
 echo ""
 echo "✓ Application started successfully"
 echo "============================================================"
 echo "Backend PID: $BACKEND_PID"
-[ ! -z "$FRONTEND_PID" ] && echo "Frontend PID: $FRONTEND_PID"
 echo ""
 echo "Access the application at:"
-echo "  Frontend: http://localhost:3000"
-echo "  Backend API: http://localhost:5002"
+echo "  Application: http://localhost:${PORT:-5002}"
+echo "  Backend API: http://localhost:${PORT:-5002}/status"
 echo "============================================================"
 
 # Keep the container running and handle shutdown
-trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit" SIGTERM SIGINT
+trap "kill $BACKEND_PID 2>/dev/null; exit" SIGTERM SIGINT
 
-# Wait for processes
-wait $BACKEND_PID $FRONTEND_PID
+# Wait for backend process
+wait $BACKEND_PID

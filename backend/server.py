@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 import sys
 from typing import Optional, Any
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 # Add the flux_nodes directory to the path
@@ -130,7 +130,7 @@ def create_app():
         logger.critical("Cannot start: license validation failed")
         sys.exit(1)
 
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder=None)
     CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization", "X-Admin-Secret"]}}, supports_credentials=False)
 
     # Register admin API blueprint
@@ -528,6 +528,28 @@ def create_app():
             'version': kpis['version'],
             'node_availability': kpis['node_availability'],
         })
+
+    # Serve frontend static files and provide root health endpoint
+    # These catch-all routes are defined last so all API routes take priority
+    frontend_build_dir = Path(__file__).parent.parent / 'frontend' / 'build'
+
+    @app.route('/')
+    def index():
+        """Serve frontend or return health status."""
+        if frontend_build_dir.is_dir() and (frontend_build_dir / 'index.html').exists():
+            return send_from_directory(str(frontend_build_dir), 'index.html')
+        return jsonify({'status': 'ok', 'service': 'SNF-AI Windsurf'})
+
+    @app.route('/<path:path>')
+    def serve_frontend(path):
+        """Serve frontend static files, fallback to index.html for SPA routing."""
+        if frontend_build_dir.is_dir():
+            resolved = (frontend_build_dir / path).resolve()
+            if resolved.is_relative_to(frontend_build_dir.resolve()) and resolved.is_file():
+                return send_from_directory(str(frontend_build_dir), path)
+            if (frontend_build_dir / 'index.html').exists():
+                return send_from_directory(str(frontend_build_dir), 'index.html')
+        return jsonify({'error': 'Not found'}), 404
 
     return app
 
