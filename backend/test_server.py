@@ -285,6 +285,7 @@ def create_test_app():
             logger.error(f"Error in registration: {e}")
             return jsonify({'error': f'Registration failed: {str(e)}'}), 500
     
+
     return app
 
 if __name__ == '__main__':
