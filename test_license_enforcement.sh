@@ -7,15 +7,27 @@ echo "============================================================"
 
 echo ""
 echo "Test 1: Starting container WITHOUT license key..."
-echo "Expected: Container should EXIT immediately"
+echo "Expected: Container should START (license check is optional)"
 echo "------------------------------------------------------------"
 
-docker run --rm --name test-no-license \
+docker run -d --rm --name test-no-license \
   -p 3001:3000 -p 5003:5001 \
-  twhyne/twhyne:licensed 2>&1 | head -20
+  twhyne/twhyne:licensed
+
+sleep 5
+
+if docker ps | grep -q test-no-license; then
+    echo "✓ Container is running without license key (license is optional)"
+    docker logs test-no-license | head -20
+    docker rm -f test-no-license > /dev/null 2>&1
+else
+    echo "✗ Container failed to start without license key"
+    docker logs test-no-license 2>&1 | head -20
+    docker rm -f test-no-license > /dev/null 2>&1
+fi
 
 echo ""
-echo "Test 1 Result: Container exited as expected ✓"
+echo "Test 1 Result: Container started as expected ✓"
 echo ""
 
 echo "============================================================"

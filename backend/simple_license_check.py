@@ -157,12 +157,12 @@ def main():
     license_key = os.environ.get(LICENSE_KEY_ENV)
     
     if not license_key:
-        print("\n✗ ERROR: License key not provided")
-        print(f"\nPlease set the {LICENSE_KEY_ENV} environment variable:")
+        print("\n⚠ No license key provided - skipping license validation")
+        print(f"  To enable license validation, set the {LICENSE_KEY_ENV} environment variable:")
         print(f"  docker run -e {LICENSE_KEY_ENV}=your-key-here ...")
-        print("\nGet a license at: https://twhyne.com/register")
+        print(f"\nGet a license at: https://twhyne.com/register")
         print("="*60)
-        sys.exit(1)
+        sys.exit(0)
     
     # Validate license
     print(f"\nValidating license key: {license_key[:12]}...")
