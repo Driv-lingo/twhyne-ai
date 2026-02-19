@@ -20,6 +20,10 @@ import ConversationManager from './components/ConversationManager';
 import './components/ConversationManager.css';
 import RAGManager from './components/RAGManager';
 import './components/RAGManager.css';
+import SignUpPage from './components/SignUpPage';
+import './components/SignUpPage.css';
+import DownloadPage from './components/DownloadPage';
+import './components/DownloadPage.css';
 import { 
   FaCode, 
   FaCalculator, 
@@ -30,7 +34,9 @@ import {
   FaTrash,
   FaKeyboard,
   FaQuestion,
-  FaLightbulb
+  FaLightbulb,
+  FaUserPlus,
+  FaDownload
 } from 'react-icons/fa';
 
 // Suppress ResizeObserver error
@@ -111,6 +117,7 @@ const nodeTooltips = {
 };
 
 function App() {
+  const [currentPage, setCurrentPage] = useState('app');
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [query, setQuery] = useState('');
@@ -617,6 +624,20 @@ function App() {
     fetchNodeStatus();
   };
 
+  // Page navigation handler
+  const handleNavigate = (page) => {
+    setCurrentPage(page);
+  };
+
+  // Render sign-up or download page if navigated
+  if (currentPage === 'signup') {
+    return <SignUpPage onNavigate={handleNavigate} />;
+  }
+
+  if (currentPage === 'downloads') {
+    return <DownloadPage onNavigate={handleNavigate} />;
+  }
+
   return (
     <div className="app">
       {/* Conversation Manager */}
@@ -645,6 +666,14 @@ function App() {
             <span className="status-label">Nodes:</span>
             <span className="status-value">{Object.values(nodeStatus).filter(n => n.status === 'online').length} Online</span>
         </div>
+          <div className="nav-links">
+            <button className="nav-link" onClick={() => setCurrentPage('signup')} aria-label="Sign Up">
+              <FaUserPlus /> <span>Sign Up</span>
+            </button>
+            <button className="nav-link" onClick={() => setCurrentPage('downloads')} aria-label="Downloads">
+              <FaDownload /> <span>Downloads</span>
+            </button>
+          </div>
           <div className="help-button" onClick={() => setShowHelpOverlay(!showHelpOverlay)} aria-label="Help">
             <FaQuestion />
           </div>

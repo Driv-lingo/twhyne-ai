@@ -500,6 +500,35 @@ body {
   letter-spacing: 0.02em;
 }
 
+/* Navigation Links in Header */
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 1rem;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  color: var(--text-primary);
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.nav-link:hover {
+  background: rgba(99, 102, 241, 0.3);
+  border-color: var(--twhyne-primary);
+  transform: translateY(-1px);
+}
+
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 10px;
