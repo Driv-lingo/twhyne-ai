@@ -7,13 +7,17 @@ echo "============================================================"
 echo "SNF-AI Windsurf - Starting"
 echo "============================================================"
 
-# Step 1: Check license FIRST
+# Step 1: Check license (optional - skipped if SNF_LICENSE_KEY is not set)
 echo ""
 echo "Step 1: Validating license..."
-python3 /app/backend/simple_license_check.py
-
-# If license check fails, the script exits here (due to set -e)
-# If we get here, license is valid
+if [ -n "$SNF_LICENSE_KEY" ]; then
+    python3 /app/backend/simple_license_check.py
+    # If license check fails, the script exits here (due to set -e)
+    # If we get here, license is valid
+else
+    echo "No license key provided - skipping license validation"
+    echo "Set SNF_LICENSE_KEY to enable license enforcement"
+fi
 
 echo ""
 echo "Step 2: Starting application..."

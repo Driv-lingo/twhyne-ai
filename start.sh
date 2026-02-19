@@ -79,12 +79,16 @@ echo ""
 echo -e "${BLUE}📦 Downloading model files...${NC}"
 echo "Starting SNF-AI Windsurf..."
 
-# Check license FIRST
+# Check license (optional - skipped if SNF_LICENSE_KEY is not set)
 echo "Validating license..."
-python3 backend/simple_license_check.py
-
-# If license check passes, continue startup
-echo "License valid - proceeding with startup"
+if [ -n "$SNF_LICENSE_KEY" ]; then
+    python3 backend/simple_license_check.py
+    # If license check passes, continue startup
+    echo "License valid - proceeding with startup"
+else
+    echo "No license key provided - skipping license validation"
+    echo "Set SNF_LICENSE_KEY to enable license enforcement"
+fi
 
 # Download models if needed
 python3 scripts/download_models_if_needed.py

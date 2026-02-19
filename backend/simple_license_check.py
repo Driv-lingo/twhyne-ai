@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Simple license validation for Docker container.
-Checks license on startup and periodically. Exits if invalid.
+Checks license on startup and periodically if a license key is provided.
+If no license key is set, the check is skipped to allow building and distribution.
 Includes offline expiry check to prevent air-gap bypass.
 """
 
@@ -157,12 +158,12 @@ def main():
     license_key = os.environ.get(LICENSE_KEY_ENV)
     
     if not license_key:
-        print("\n✗ ERROR: License key not provided")
-        print(f"\nPlease set the {LICENSE_KEY_ENV} environment variable:")
+        print("\n⚠ No license key provided - skipping license validation")
+        print(f"  To enable license validation, set the {LICENSE_KEY_ENV} environment variable:")
         print(f"  docker run -e {LICENSE_KEY_ENV}=your-key-here ...")
-        print("\nGet a license at: https://twhyne.com/register")
+        print(f"\nGet a license at: https://twhyne.com/register")
         print("="*60)
-        sys.exit(1)
+        sys.exit(0)
     
     # Validate license
     print(f"\nValidating license key: {license_key[:12]}...")
