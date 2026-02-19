@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Simple license validation for Docker container.
-Checks license on startup and periodically. Exits if invalid.
+Checks license on startup and periodically if a license key is provided.
+If no license key is set, the check is skipped to allow building and distribution.
 Includes offline expiry check to prevent air-gap bypass.
 """
 
