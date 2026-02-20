@@ -39,7 +39,7 @@ COPY --from=backend-build /app/backend /app/backend
 
 # Copy model download script and other necessary scripts
 COPY scripts/download_models.py /app/scripts/
-COPY start_with_license.sh /app/
+COPY start.sh /app/
 
 # Install Python dependencies in the final stage
 COPY requirements.txt .
@@ -52,7 +52,7 @@ RUN pip install httpx
 EXPOSE 5002
 
 # Set executable permissions on start script
-RUN chmod +x /app/start_with_license.sh
+RUN chmod +x /app/start.sh
 
-# Run the start script with license enforcement
-CMD ["/app/start_with_license.sh"]
+# Run the start script
+CMD ["/app/start.sh"]
