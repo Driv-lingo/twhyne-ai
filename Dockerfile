@@ -40,7 +40,6 @@ COPY --from=backend-build /app/backend /app/backend
 # Copy model download script and other necessary scripts
 COPY scripts/download_models.py /app/scripts/
 COPY start_with_license.sh /app/
-COPY backend/simple_license_check.py /app/backend/
 
 # Install Python dependencies in the final stage
 COPY requirements.txt .
