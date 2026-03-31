@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - SNF-AI Windsurf</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .license-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .license-key {
+            font-family: 'Courier New', monospace;
+            font-size: 1.2em;
+            color: #667eea;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            word-break: break-all;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-expired {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+        .copy-btn {
+            background: #28a745;
+            color: white;
+            padding: 8px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        .instructions {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 5px;
+        }
+        .instructions code {
+            background: #fff;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>License Dashboard</h1>
+                <p>{{ email }}</p>
+            </div>
+            <button class="btn btn-secondary" onclick="logout()">Logout</button>
+        </div>
+
+        <div class="license-card">
+            <h2>Your Licenses</h2>
+            
+            {% if licenses %}
+                {% for key, license in licenses.items() %}
+                <div style="border-bottom: 1px solid #eee; padding: 20px 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h3>License Key</h3>
+                            <div class="license-key">
+                                {{ license.license_key }}
+                                <button class="copy-btn" onclick="copyToClipboard('{{ license.license_key }}')">Copy</button>
+                            </div>
+                        </div>
+                        <span class="status {% if license.is_active %}status-active{% else %}status-expired{% endif %}">
+                            {% if license.is_active %}Active{% else %}Inactive{% endif %}
+                        </span>
+                    </div>
+                    <p style="color: #666; margin-top: 10px;">
+                        <strong>Expires:</strong> {{ license.expiry_date[:10] }}
+                    </p>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">
+                    <h3>No licenses yet</h3>
+                    <p>Purchase a license to get started</p>
+                </div>
+            {% endif %}
+            
+            <div style="margin-top: 30px;">
+                <button class="btn btn-primary" onclick="purchaseLicense()">Purchase New License ($20/month)</button>
+            </div>
+        </div>
+
+        {% if licenses %}
+        <div class="license-card instructions">
+            <h3>🚀 Quick Start - Download & Run</h3>
+            <div style="margin: 20px 0;">
+                <h4>Step 1: Install Docker Desktop</h4>
+                <a href="https://docker.com" target="_blank" class="btn btn-secondary">Download Docker</a>
+                
+                <h4 style="margin-top: 20px;">Step 2: Download SNF-AI Manager</h4>
+                <div style="display: flex; gap: 10px; margin: 10px 0;">
+                    <a href="/download/windows" class="btn btn-primary">📥 Download for Windows</a>
+                    <a href="/download/mac" class="btn btn-primary">📥 Download for Mac</a>
+                </div>
+                
+                <h4 style="margin-top: 20px;">Step 3: Run</h4>
+                <p>1. Extract the downloaded ZIP file</p>
+                <p>2. Double-click START-SNF-AI (.bat for Windows, .command for Mac)</p>
+                <p>3. Enter your license key when prompted: <code>{{ licenses.values() | first | attr('license_key') if licenses else 'YOUR-LICENSE-KEY' }}</code></p>
+                <p>4. Your browser will open automatically!</p>
+            </div>
+            
+            <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                <strong>💡 No command line needed!</strong> Just double-click to start/stop/update.
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        async function logout() {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/';
+        }
+
+        async function purchaseLicense() {
+            if (!confirm('Purchase a 30-day license for $20?')) return;
+            
+            try {
+                const response = await fetch('/api/purchase-license', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    if (data.checkout_url) {
+                        // Redirect to Stripe checkout
+                        window.location.href = data.checkout_url;
+                    } else {
+                        // Test mode - license generated immediately
+                        alert('License generated successfully!\\n\\nLicense Key: ' + data.license_key);
+                        location.reload();
+                    }
+                } else {
+                    alert('Error: ' + (data.error || 'Purchase failed'));
+                }
+            } catch (error) {
+                alert('Network error. Please try again.');
+            }
+        }
+        
+        // Check for payment success/cancel
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('payment') === 'success') {
+            alert('Payment successful! Your license has been generated.\\nCheck your email for details.');
+            window.location.href = '/dashboard';
+        } else if (urlParams.get('payment') === 'cancel') {
+            alert('Payment cancelled.');
+            window.location.href = '/dashboard';
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('License key copied to clipboard!');
+            });
+        }
+    </script>
+</body>
+</html>
