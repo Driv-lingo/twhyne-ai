@@ -6,6 +6,12 @@ on:
       - "v*.*.*"
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag to attach assets to (e.g. v1.0.0)"
+        required: true
+        default: "v1.0.0"
 
 permissions:
   contents: write
@@ -48,8 +54,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
-          name: Twhyne AI ${{ github.event.release.tag_name || github.ref_name }}
+          tag_name: ${{ github.event.release.tag_name || github.event.inputs.tag_name || github.ref_name }}
+          name: Twhyne AI ${{ github.event.release.tag_name || github.event.inputs.tag_name || github.ref_name }}
           draft: false
           prerelease: ${{ contains(github.event.release.tag_name || github.ref_name, '-alpha') || contains(github.event.release.tag_name || github.ref_name, '-beta') || contains(github.event.release.tag_name || github.ref_name, '-rc') }}
           body: |
