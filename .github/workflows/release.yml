@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Windows launcher
+        run: |
+          mkdir -p dist
+          cp launch-twhyne.bat dist/twhyne-ai-setup.bat
+
+      - name: Build macOS installer (.command → .dmg stub)
+        run: |
+          # Package the .command launcher into a minimal .dmg so macOS users
+          # get a familiar disk image. They open the .dmg and find the
+          # launch-twhyne.command script inside.
+          mkdir -p dmg_staging
+          cp launch-twhyne.command dmg_staging/
+          cp README.md dmg_staging/ 2>/dev/null || true
+
+          # Create a simple folder-based .dmg (no code signing required)
+          hdiutil create \
+            -volname "Twhyne AI ${{ github.ref_name }}" \
+            -srcfolder dmg_staging \
+            -ov -format UDZO \
+            dist/twhyne-ai.dmg
+
+      - name: Prepare Linux launcher (.AppImage stub)
+        run: |
+          # Linux users get the raw .command script as an AppImage stub.
+          # A full AppImage build can be added later when native binaries exist.
+          cp launch-twhyne.command dist/twhyne-ai.AppImage
+          chmod +x dist/twhyne-ai.AppImage
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Twhyne AI ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          body: |
+            ## Twhyne AI ${{ github.ref_name }}
+
+            ### Installation
+
+            **Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) must be installed.
+
+            | Platform | Download |
+            |---|---|
+            | Windows | `twhyne-ai-setup.exe` (run as Administrator if prompted) |
+            | macOS | `twhyne-ai.dmg` → open the disk image → double-click `launch-twhyne.command` |
+            | Linux | `twhyne-ai.AppImage` → `chmod +x twhyne-ai.AppImage && ./twhyne-ai.AppImage` |
+
+            ### First run
+            1. Get a free license key at **https://twhyne.com**
+            2. Run the launcher — it will prompt for your `TWHYNE-...` key
+            3. The app opens at **http://localhost:3000**
+
+            ### What's new
+          files: |
+            dist/twhyne-ai-setup.bat
+            dist/twhyne-ai.dmg
+            dist/twhyne-ai.AppImage
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
