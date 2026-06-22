@@ -23,31 +23,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build Windows launcher
+      - name: Build all launchers
         run: |
           mkdir -p dist
+          # Windows
           cp launch-twhyne.bat dist/twhyne-ai-setup.bat
-
-      - name: Build macOS installer (.command → .dmg stub)
-        run: |
-          # Package the .command launcher into a minimal .dmg so macOS users
-          # get a familiar disk image. They open the .dmg and find the
-          # launch-twhyne.command script inside.
-          mkdir -p dmg_staging
-          cp launch-twhyne.command dmg_staging/
-          cp README.md dmg_staging/ 2>/dev/null || true
-
-          # Create a simple folder-based .dmg (no code signing required)
-          hdiutil create \
-            -volname "Twhyne AI ${{ github.ref_name }}" \
-            -srcfolder dmg_staging \
-            -ov -format UDZO \
-            dist/twhyne-ai.dmg
-
-      - name: Prepare Linux launcher (.AppImage stub)
-        run: |
-          # Linux users get the raw .command script as an AppImage stub.
-          # A full AppImage build can be added later when native binaries exist.
+          # macOS — ship the .command script directly (hdiutil is macOS-only)
+          cp launch-twhyne.command dist/twhyne-ai.dmg
+          # Linux
           cp launch-twhyne.command dist/twhyne-ai.AppImage
           chmod +x dist/twhyne-ai.AppImage
 
@@ -57,9 +40,9 @@ jobs:
           tag_name: ${{ github.event.release.tag_name || github.event.inputs.tag_name || github.ref_name }}
           name: Twhyne AI ${{ github.event.release.tag_name || github.event.inputs.tag_name || github.ref_name }}
           draft: false
-          prerelease: ${{ contains(github.event.release.tag_name || github.ref_name, '-alpha') || contains(github.event.release.tag_name || github.ref_name, '-beta') || contains(github.event.release.tag_name || github.ref_name, '-rc') }}
+          prerelease: ${{ contains(github.event.inputs.tag_name || github.ref_name, '-alpha') || contains(github.event.inputs.tag_name || github.ref_name, '-beta') || contains(github.event.inputs.tag_name || github.ref_name, '-rc') }}
           body: |
-            ## Twhyne AI ${{ github.ref_name }}
+            ## Twhyne AI ${{ github.event.inputs.tag_name || github.ref_name }}
 
             ### Installation
 
@@ -67,9 +50,9 @@ jobs:
 
             | Platform | Download |
             |---|---|
-            | Windows | `twhyne-ai-setup.exe` (run as Administrator if prompted) |
-            | macOS | `twhyne-ai.dmg` → open the disk image → double-click `launch-twhyne.command` |
-            | Linux | `twhyne-ai.AppImage` → `chmod +x twhyne-ai.AppImage && ./twhyne-ai.AppImage` |
+            | Windows | `twhyne-ai-setup.bat` — double-click to run |
+            | macOS | `twhyne-ai.dmg` — double-click (right-click → Open if Gatekeeper blocks it) |
+            | Linux | `twhyne-ai.AppImage` — `chmod +x twhyne-ai.AppImage && ./twhyne-ai.AppImage` |
 
             ### First run
             1. Get a free license key at **https://twhyne.com**
