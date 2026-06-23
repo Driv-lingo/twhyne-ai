@@ -1,6 +1,5 @@
 #!/bin/bash
-# Twhyne AI - macOS Launcher
-# Double-click this file to start Twhyne AI.
+# Twhyne AI - macOS/Linux Launcher
 
 set -e
 
@@ -38,8 +37,26 @@ echo ""
 docker stop twhyne-ai 2>/dev/null || true
 docker rm   twhyne-ai 2>/dev/null || true
 
+# ── Write patched app_launcher.py (no tkinter) ───────────────
+PATCH_DIR="$(mktemp -d)"
+cat > "$PATCH_DIR/app_launcher.py" <<'PYEOF'
+import time
+import webbrowser
+import threading
+
+def open_browser():
+    time.sleep(8)
+    webbrowser.open("http://localhost:3000")
+
+t = threading.Thread(target=open_browser, daemon=True)
+t.start()
+
+while True:
+    time.sleep(60)
+PYEOF
+
 # ── Open browser after a short delay ─────────────────────────
-(sleep 8 && open "http://localhost:3000") &
+(sleep 8 && open "http://localhost:3000" 2>/dev/null || xdg-open "http://localhost:3000" 2>/dev/null || true) &
 
 # ── Launch ────────────────────────────────────────────────────
 echo "Starting Twhyne AI..."
@@ -54,6 +71,9 @@ docker run --name twhyne-ai --rm \
   -e SNF_LICENSE_KEY="$SNF_LICENSE_KEY" \
   -e LICENSE_API_URL=https://twhyne.com \
   -e SNF_LICENSE_API=https://twhyne.com \
+  -v "$PATCH_DIR/app_launcher.py:/app/backend/app_launcher.py:ro" \
   -p 3000:3000 \
   -p 5001:5001 \
   twhyne/twhyne:licensed
+
+rm -rf "$PATCH_DIR"
