@@ -53,4 +53,9 @@ docker run --name twhyne-ai --rm ^
   -p 5001:5001 ^
   twhyne/twhyne:licensed
 
+echo.
+echo ============================================================
+echo  Twhyne AI has stopped. See output above for details.
+echo ============================================================
+pause
 endlocal
