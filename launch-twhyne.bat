@@ -36,23 +36,28 @@ REM ── Stop any existing container ─────────────�
 docker stop twhyne-ai 2>nul
 docker rm   twhyne-ai 2>nul
 
-REM ── Write patched app_launcher.py (no tkinter) ──────────────
+REM ── Write patched app_launcher.py (starts frontend, no tkinter) ──
 set PATCH_DIR=%TEMP%\twhyne-patch
 mkdir "%PATCH_DIR%" 2>nul
 (
-echo import time
-echo import webbrowser
+echo import subprocess
 echo import threading
+echo import time
 echo import os
+echo import sys
 echo.
-echo def open_browser^(^):
-echo     time.sleep^(8^)
-echo     webbrowser.open^("http://localhost:3000"^)
+echo def start_frontend^(^):
+echo     os.chdir^("/app/frontend"^)
+echo     env = os.environ.copy^(^)
+echo     env["PORT"] = "3000"
+echo     env["BROWSER"] = "none"
+echo     env["CI"] = "false"
+echo     subprocess.run^(["npm", "start"], env=env^)
 echo.
-echo t = threading.Thread^(target=open_browser, daemon=True^)
+echo t = threading.Thread^(target=start_frontend, daemon=True^)
 echo t.start^(^)
 echo.
-echo # Keep running until container stops
+echo # Keep main thread alive
 echo while True:
 echo     time.sleep^(60^)
 ) > "%PATCH_DIR%\app_launcher.py"
@@ -60,7 +65,7 @@ echo     time.sleep^(60^)
 REM ── Launch ──────────────────────────────────────────────────
 echo Starting Twhyne AI...
 echo   Frontend: http://localhost:3000
-echo   Backend:  http://localhost:5001
+echo   Backend:  http://localhost:5002
 echo.
 echo Press Ctrl+C to stop.
 echo ============================================================
@@ -71,8 +76,8 @@ docker run --name twhyne-ai --rm ^
   -e LICENSE_API_URL=https://twhyne.com ^
   -e SNF_LICENSE_API=https://twhyne.com ^
   -v "%PATCH_DIR%\app_launcher.py:/app/backend/app_launcher.py:ro" ^
-  -p 3000:3000 ^
-  -p 5001:5001 ^
+  -p 3000:3001 ^
+  -p 5002:5002 ^
   twhyne/twhyne:licensed
 
 echo.
