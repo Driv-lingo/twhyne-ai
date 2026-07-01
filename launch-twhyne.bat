@@ -6,11 +6,12 @@ echo  Twhyne AI - Launcher
 echo ============================================================
 echo.
 
-REM ── License key ─────────────────────────────────────────────
+set IMAGE=ghcr.io/driv-lingo/twhyne:cpu
+
+REM -- License key --------------------------------------------
 if "%SNF_LICENSE_KEY%"=="" (
     set /p SNF_LICENSE_KEY="Enter your Twhyne license key (TWHYNE-...): "
 )
-
 if "%SNF_LICENSE_KEY%"=="" (
     echo ERROR: No license key provided.
     echo Get a license at https://twhyne.com
@@ -18,7 +19,7 @@ if "%SNF_LICENSE_KEY%"=="" (
     exit /b 1
 )
 
-REM ── Check Docker is running ──────────────────────────────────
+REM -- Check Docker is running ---------------------------------
 docker version >nul 2>&1
 if errorlevel 1 (
     echo ERROR: Docker is not running.
@@ -27,68 +28,47 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM ── Model directory (persistent, downloaded once) ───────────
+REM -- Model directory (downloaded once) ----------------------
 set MODELS_DIR=%USERPROFILE%\.twhyne\models
 if not exist "%MODELS_DIR%" mkdir "%MODELS_DIR%"
 
-call :get_model "mistral-7b-instruct-q4.gguf"   "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
-call :get_model "codellama-7b-q4.gguf"          "https://huggingface.co/TheBloke/CodeLlama-7B-GGUF/resolve/main/codellama-7b.Q4_K_M.gguf"
-call :get_model "llava-v1.5-7b-Q4_K.gguf"        "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/ggml-model-q4_k.gguf"
-call :get_model "mmproj-model-f16.gguf"          "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/mmproj-model-f16.gguf"
+call :get_model "mistral-7b-instruct-q4.gguf" "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+call :get_model "codellama-7b-q4.gguf"        "https://huggingface.co/TheBloke/CodeLlama-7B-GGUF/resolve/main/codellama-7b.Q4_K_M.gguf"
+call :get_model "llava-v1.5-7b-Q4_K.gguf"       "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/ggml-model-q4_k.gguf"
+call :get_model "mmproj-model-f16.gguf"         "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/mmproj-model-f16.gguf"
 
 echo.
-echo All models ready in %MODELS_DIR%
+echo Models ready in %MODELS_DIR%
 echo.
 
-REM ── Pull latest image ────────────────────────────────────────
+REM -- Pull latest image --------------------------------------
 echo Checking for updates...
-docker pull --platform linux/arm64 twhyne/twhyne:licensed
+docker pull %IMAGE%
 echo.
 
-REM ── Stop any existing container ─────────────────────────────
+REM -- Stop any existing container -----------------------------
 docker stop twhyne-ai 2>nul
 docker rm   twhyne-ai 2>nul
 
-REM ── Write patched app_launcher.py (backend + static frontend) ──
-set PATCH_DIR=%TEMP%\twhyne-patch
-mkdir "%PATCH_DIR%" 2>nul
-(
-echo import subprocess, threading, time
-echo.
-echo def start_backend^(^):
-echo     subprocess.run^(["python3", "server.py"], cwd="/app/backend"^)
-echo.
-echo def serve_frontend^(^):
-echo     subprocess.run^(["python3", "-m", "http.server", "3000",
-echo                     "--directory", "/app/frontend/build"]^)
-echo.
-echo threading.Thread^(target=start_backend, daemon=True^).start^(^)
-echo time.sleep^(3^)
-echo threading.Thread^(target=serve_frontend, daemon=True^).start^(^)
-echo.
-echo while True:
-echo     time.sleep^(60^)
-) > "%PATCH_DIR%\app_launcher.py"
+REM -- Open browser after startup ------------------------------
+start "" /min cmd /c "timeout /t 12 >nul & start http://localhost:3000"
 
-REM ── Launch ──────────────────────────────────────────────────
 echo Starting Twhyne AI...
 echo   Frontend: http://localhost:3000
 echo   Backend:  http://localhost:5002
 echo.
-echo (Models load on first query - give it a minute.)
+echo (First response may take up to a minute while the model loads.)
 echo Press Ctrl+C to stop.
 echo ============================================================
 
 docker run --name twhyne-ai --rm ^
-  --platform linux/arm64 ^
   -e SNF_LICENSE_KEY=%SNF_LICENSE_KEY% ^
   -e LICENSE_API_URL=https://twhyne.com ^
   -e SNF_LICENSE_API=https://twhyne.com ^
-  -v "%PATCH_DIR%\app_launcher.py:/app/backend/app_launcher.py:ro" ^
   -v "%MODELS_DIR%:/app/models" ^
   -p 3000:3000 ^
   -p 5002:5002 ^
-  twhyne/twhyne:licensed
+  %IMAGE%
 
 echo.
 echo ============================================================
@@ -97,7 +77,7 @@ echo ============================================================
 pause
 exit /b 0
 
-REM ── Helper: download a model if not already present ─────────
+REM -- Helper: download a model if not already present --------
 :get_model
 set "FNAME=%~1"
 set "URL=%~2"
@@ -106,7 +86,7 @@ if exist "%MODELS_DIR%\%FNAME%" (
     goto :eof
 )
 echo.
-echo Downloading %FNAME% (this is a few GB, one time only)...
+echo Downloading %FNAME% (a few GB, one time only)...
 curl -L -o "%MODELS_DIR%\%FNAME%" "%URL%"
 if errorlevel 1 (
     echo WARNING: Failed to download %FNAME%. That node will be unavailable.
