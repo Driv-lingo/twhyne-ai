@@ -37,31 +37,28 @@ echo ""
 docker stop twhyne-ai 2>/dev/null || true
 docker rm   twhyne-ai 2>/dev/null || true
 
-# ── Write patched app_launcher.py (starts frontend, no tkinter) ──
+# ── Write patched app_launcher.py (starts backend + serves frontend) ──
 PATCH_DIR="$(mktemp -d)"
 cat > "$PATCH_DIR/app_launcher.py" <<'PYEOF'
-import subprocess
-import threading
-import time
-import os
+import subprocess, threading, time
 
-def start_frontend():
-    os.chdir("/app/frontend")
-    env = os.environ.copy()
-    env["PORT"] = "3000"
-    env["BROWSER"] = "none"
-    env["CI"] = "false"
-    subprocess.run(["npm", "start"], env=env)
+def start_backend():
+    subprocess.run(["python3", "server.py"], cwd="/app/backend")
 
-t = threading.Thread(target=start_frontend, daemon=True)
-t.start()
+def serve_frontend():
+    subprocess.run(["python3", "-m", "http.server", "3000",
+                    "--directory", "/app/frontend/build"])
+
+threading.Thread(target=start_backend, daemon=True).start()
+time.sleep(3)
+threading.Thread(target=serve_frontend, daemon=True).start()
 
 while True:
     time.sleep(60)
 PYEOF
 
-# ── Open browser after frontend warms up ─────────────────────
-(sleep 20 && open "http://localhost:3000" 2>/dev/null || xdg-open "http://localhost:3000" 2>/dev/null || true) &
+# ── Open browser once the frontend is up ─────────────────────
+(sleep 15 && open "http://localhost:3000" 2>/dev/null || xdg-open "http://localhost:3000" 2>/dev/null || true) &
 
 # ── Launch ────────────────────────────────────────────────────
 echo "Starting Twhyne AI..."
@@ -77,7 +74,7 @@ docker run --name twhyne-ai --rm \
   -e LICENSE_API_URL=https://twhyne.com \
   -e SNF_LICENSE_API=https://twhyne.com \
   -v "$PATCH_DIR/app_launcher.py:/app/backend/app_launcher.py:ro" \
-  -p 3000:3001 \
+  -p 3000:3000 \
   -p 5002:5002 \
   twhyne/twhyne:licensed
 
