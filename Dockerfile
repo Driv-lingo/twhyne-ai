@@ -14,9 +14,12 @@ RUN npm run build
 FROM python:3.11-bullseye
 WORKDIR /app
 
+# Flush stdout/stderr immediately so logs are visible in real time
+ENV PYTHONUNBUFFERED=1
+
 # Build tools needed to compile llama-cpp-python, plus curl for the license check
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential cmake curl \
+        build-essential cmake curl procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Python dependencies (CPU build of the inference engine)

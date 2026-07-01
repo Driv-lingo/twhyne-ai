@@ -35,33 +35,29 @@ class LanguageNode(FluxNode):
         logger.info(f"Starting LanguageNode initialization with node_id: {node_id}")
         super().__init__(node_id, name, description)
         logger.info("LanguageNode parent initialization complete")
-        
+
         # Set model path
         logger.info("Setting model path...")
         if model_path is None:
             from . import MODELS_DIR
             logger.info(f"MODELS_DIR: {MODELS_DIR}")
-            
+
             # Use the available Mistral model
             self.model_path = MODELS_DIR / "mistral-7b-instruct-q4.gguf"
             logger.info(f"Using Mistral-7B-Instruct model: {self.model_path}")
-            logger.info(f"Checking if model file exists: {self.model_path}")
-            
+
             # Verify model file exists
             if not os.path.exists(self.model_path):
-                logger.error(f"Model file not found: {self.model_path}")
-                # Try alternative name
-                alt_path = MODELS_DIR / "mistral-7b-instruct-q4.gguf"
-                if os.path.exists(alt_path):
-                    logger.info(f"Found alternative model: {alt_path}")
-                    self.model_path = alt_path
-                else:
-                    logger.error(f"No suitable Mistral model found in {MODELS_DIR}")
-                    self.is_available = False
-                    return
+                logger.error(f"No suitable Mistral model found in {MODELS_DIR}")
+                self.is_available = False
+                return
         else:
             self.model_path = model_path
-        
+            if not os.path.exists(self.model_path):
+                logger.error(f"Model file not found: {self.model_path}")
+                self.is_available = False
+                return
+
         # Add keywords for language queries
         self.keywords = {
             "text", "language", "chat", "conversation", "question", "answer", "explain",
@@ -69,16 +65,12 @@ class LanguageNode(FluxNode):
             "generate", "create", "help", "assist", "translate", "summarize", "essay",
             "story", "letter", "email", "report", "article", "paragraph", "sentence"
         }
-        
-        # Initialize model
+
+        # Model is loaded lazily on first query. This keeps startup fast and
+        # keeps memory low on CPU-only machines (the model is ~4GB).
         self.model = None
         self.model_loaded = False
-        
-        # Pre-load model during initialization for faster inference
-        logger.info("Pre-loading Mistral model for faster inference...")
-        self._load_model()
-        
-        logger.info("LanguageNode initialization complete")
+        logger.info("LanguageNode ready (model will load on first query)")
 
     def generate(self, prompt: str, **kwargs) -> Optional[str]:
         """Generate a response based on a prompt."""
@@ -86,70 +78,65 @@ class LanguageNode(FluxNode):
         conversation_history = kwargs.get('conversation_history', [])
         logger.info(f"LanguageNode generate called with prompt: {prompt[:100]}... and {len(conversation_history)} history items")
         try:
-            # FORCE model to stay loaded - critical for sub-2s performance
+            # Lazy-load the model on first use.
             if not self.model_loaded or self.model is None:
-                logger.error("CRITICAL: Model not pre-loaded! This should not happen.")
-                return "Error: Model not ready. Please try again."
-            
-            if not self.model:
+                logger.info("Loading Mistral model on first use (this can take a minute)...")
+                self._load_model()
+
+            if not self.model_loaded or self.model is None:
                 logger.error("Failed to load model")
-                return "Sorry, the language model is not available."
-            
+                return "Sorry, the language model failed to load."
+
             # Format the prompt with conversation history
             formatted_prompt = self._format_prompt(prompt, conversation_history)
-            
-            # SPEED-OPTIMIZED generation for sub-2s latency
+
             response = self.model(
                 formatted_prompt,
-                max_tokens=1024,     # Reduced for CPU optimization
-                temperature=0.5,     # Less creative for more accurate responses
-                top_p=0.8,          # Adjusted for more natural output
-                top_k=20,           # Fewer vocabulary options for faster responses
-                repeat_penalty=1.0,  # No penalty to allow repetition
-                stop=["</s>"],     # Only stop on end of sequence token
+                max_tokens=512,      # Keep responses snappy on CPU
+                temperature=0.5,
+                top_p=0.8,
+                top_k=20,
+                repeat_penalty=1.0,
+                stop=["</s>"],
                 echo=False
             )
-            
+
             result = response['choices'][0]['text'].strip()
             logger.info(f"Generated response: {result[:100]}...")
             return result
-            
+
         except Exception as e:
             logger.error(f"Error generating response: {e}")
             return f"Error: {str(e)}"
 
     def _load_model(self):
-        """Load the language model with GPU acceleration."""
+        """Load the language model (CPU or GPU)."""
         try:
-            # Check GPU availability
             gpu_available = False
             gpu_layers = 0
             try:
                 import torch
                 if torch.cuda.is_available():
                     gpu_available = True
-                    gpu_layers = 16  # Use 16 GPU layers for balanced performance
-                    gpu_name = torch.cuda.get_device_name(0)
-                    gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
-                    logger.info(f"GPU detected for LanguageNode: {gpu_name} ({gpu_memory:.1f} GB)")
+                    gpu_layers = 16
+                    logger.info(f"GPU detected for LanguageNode: {torch.cuda.get_device_name(0)}")
                 else:
                     logger.info("No GPU available for LanguageNode, using CPU only")
             except Exception as e:
                 logger.warning(f"GPU detection failed for LanguageNode: {e}")
-            
+
             device_info = "GPU-accelerated" if gpu_available else "CPU-only"
             logger.info(f"Loading Mistral-7B model from: {self.model_path} ({device_info})")
-            logger.info(f"Using {gpu_layers} GPU layers for LanguageNode")
-            
+
             self.model = Llama(
                 model_path=str(self.model_path),
-                n_ctx=4096,          # Increased context for better completion
-                n_batch=16,          # Smaller batch for speed
-                use_mmap=True,       # Memory mapping for faster loading
-                use_mlock=False,     # Don't lock pages in RAM
-                n_threads=8,         # Reduced threads for speed
-                n_gpu_layers=gpu_layers,  # Dynamic GPU layers
-                f16_kv=True,         # Half precision for speed
+                n_ctx=4096,
+                n_batch=16,
+                use_mmap=True,
+                use_mlock=False,
+                n_threads=8,
+                n_gpu_layers=gpu_layers,
+                f16_kv=True,
                 verbose=False,
             )
             self.model_loaded = True
@@ -164,20 +151,16 @@ class LanguageNode(FluxNode):
         """Format the prompt for the model with conversation history."""
         if not conversation_history:
             return f"[INST] {query_text} [/INST]"
-        
-        # Build conversation context
+
         context_parts = []
-        
-        # Add recent conversation history (limit to last 2 messages for speed)
         recent_history = conversation_history[-2:] if len(conversation_history) > 2 else conversation_history
-        
+
         for msg in recent_history:
             if msg.get('role') == 'user':
                 context_parts.append(f"Human: {msg.get('content', '')}")
             elif msg.get('role') == 'assistant':
                 context_parts.append(f"Assistant: {msg.get('content', '')}")
-        
-        # Combine context with current query
+
         if context_parts:
             context = "\n".join(context_parts)
             return f"[INST] Previous conversation:\n{context}\n\nCurrent question: {query_text} [/INST]"
