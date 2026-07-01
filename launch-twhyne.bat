@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
 echo ============================================================
 echo  Twhyne AI - Launcher
@@ -27,6 +27,19 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM ── Model directory (persistent, downloaded once) ───────────
+set MODELS_DIR=%USERPROFILE%\.twhyne\models
+if not exist "%MODELS_DIR%" mkdir "%MODELS_DIR%"
+
+call :get_model "mistral-7b-instruct-q4.gguf"   "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+call :get_model "codellama-7b-q4.gguf"          "https://huggingface.co/TheBloke/CodeLlama-7B-GGUF/resolve/main/codellama-7b.Q4_K_M.gguf"
+call :get_model "llava-v1.5-7b-Q4_K.gguf"        "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/ggml-model-q4_k.gguf"
+call :get_model "mmproj-model-f16.gguf"          "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/mmproj-model-f16.gguf"
+
+echo.
+echo All models ready in %MODELS_DIR%
+echo.
+
 REM ── Pull latest image ────────────────────────────────────────
 echo Checking for updates...
 docker pull --platform linux/arm64 twhyne/twhyne:licensed
@@ -36,11 +49,11 @@ REM ── Stop any existing container ─────────────�
 docker stop twhyne-ai 2>nul
 docker rm   twhyne-ai 2>nul
 
-REM ── Write patched app_launcher.py (starts backend + serves frontend) ──
+REM ── Write patched app_launcher.py (backend + static frontend) ──
 set PATCH_DIR=%TEMP%\twhyne-patch
 mkdir "%PATCH_DIR%" 2>nul
 (
-echo import subprocess, threading, time, os
+echo import subprocess, threading, time
 echo.
 echo def start_backend^(^):
 echo     subprocess.run^(["python3", "server.py"], cwd="/app/backend"^)
@@ -62,7 +75,7 @@ echo Starting Twhyne AI...
 echo   Frontend: http://localhost:3000
 echo   Backend:  http://localhost:5002
 echo.
-echo (The interface takes ~15 seconds to come up after this.)
+echo (Models load on first query - give it a minute.)
 echo Press Ctrl+C to stop.
 echo ============================================================
 
@@ -72,6 +85,7 @@ docker run --name twhyne-ai --rm ^
   -e LICENSE_API_URL=https://twhyne.com ^
   -e SNF_LICENSE_API=https://twhyne.com ^
   -v "%PATCH_DIR%\app_launcher.py:/app/backend/app_launcher.py:ro" ^
+  -v "%MODELS_DIR%:/app/models" ^
   -p 3000:3000 ^
   -p 5002:5002 ^
   twhyne/twhyne:licensed
@@ -81,4 +95,21 @@ echo ============================================================
 echo  Twhyne AI has stopped. See output above for details.
 echo ============================================================
 pause
-endlocal
+exit /b 0
+
+REM ── Helper: download a model if not already present ─────────
+:get_model
+set "FNAME=%~1"
+set "URL=%~2"
+if exist "%MODELS_DIR%\%FNAME%" (
+    echo [OK] %FNAME% already downloaded.
+    goto :eof
+)
+echo.
+echo Downloading %FNAME% (this is a few GB, one time only)...
+curl -L -o "%MODELS_DIR%\%FNAME%" "%URL%"
+if errorlevel 1 (
+    echo WARNING: Failed to download %FNAME%. That node will be unavailable.
+    del "%MODELS_DIR%\%FNAME%" 2>nul
+)
+goto :eof
