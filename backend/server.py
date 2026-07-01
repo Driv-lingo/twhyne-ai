@@ -30,7 +30,8 @@ def _route_query(prompt: str, node_registry) -> Optional[Any]:
               'vision-llava-1.6-7b': 0, 'language-mistral-7b': 0}
 
     for ind in ['+', '-', '*', '/', '=', 'calculate', 'compute', 'solve', 'math', 'equation',
-                'add', 'subtract', 'multiply', 'divide', 'sum', 'product', 'square', 'root']:
+                'add', 'subtract', 'multiply', 'divide', 'sum', 'product', 'square', 'root',
+                'derivative', 'integral', 'integrate', 'differentiate']:
         if ind in p:
             scores['math-llm-eval'] += 2
     for kw in ['code', 'function', 'class', 'method', 'algorithm', 'programming', 'script',
@@ -68,16 +69,12 @@ def create_app():
     node_registry = NodeRegistry()
     models_dir = Path(__file__).parent.parent / 'models'
 
-    # All five nodes are registered but load their models LAZILY on first use.
-    # Language, Math and Planner share ONE Mistral instance (see shared_model.py),
-    # so three nodes cost the memory of one. Code and Vision are separate models
-    # that only load when a code/image query actually routes to them.
     node_specs = [
         lambda: LanguageNode(node_id='language-mistral-7b', name='Language (OpenHermes-Mistral-7B)',
                              description='Language understanding and generation using Mistral-7B',
                              model_path=models_dir / 'mistral-7b-instruct-q4.gguf'),
-        lambda: MathNode(node_id='math-llm-eval', name='Math (LLM Eval)',
-                         description='Solves mathematical problems using a local LLM.',
+        lambda: MathNode(node_id='math-llm-eval', name='Math (SymPy Symbolic)',
+                         description='Exact arithmetic, algebra and calculus using SymPy.',
                          model_path=models_dir / 'mistral-7b-instruct-q4.gguf'),
         lambda: PlannerNode(node_id='planner-mistral-7b', name='Planner (Mistral-7B)',
                             description='Task planning and decomposition',
@@ -154,6 +151,29 @@ def create_app():
         file.save(filepath)
         return jsonify({'filepath': filepath, 'message': 'File uploaded successfully'})
 
+    def _retrieve_context(prompt, dataset_id, strict):
+        """Return (context_text, [sources]) from the RAG store.
+
+        strict=True (explicit grounded mode): include any matching passage.
+        strict=False (auto mode): only include strong matches so general chat
+        still works when the question isn't covered by the documents.
+        """
+        rm = get_rag_manager()
+        datasets = rm.list_datasets()
+        if not dataset_id and datasets:
+            dataset_id = datasets[0]['id']
+        if not dataset_id:
+            return "", []
+        results = [r for r in rm.search_dataset(dataset_id, prompt, top_k=4) if r.get('score', 0) > 0]
+        if not strict:
+            results = [r for r in results if r.get('score', 0) >= 0.3]
+        context, sources = "", []
+        for r in results:
+            context += f"[Source: {r['source']}]\n{r['content']}\n\n"
+            if r['source'] not in sources:
+                sources.append(r['source'])
+        return context, sources
+
     @app.route('/query', methods=['POST', 'OPTIONS'])
     def submit_query():
         if request.method == 'OPTIONS':
@@ -170,6 +190,37 @@ def create_app():
             if not prompt or not prompt.strip():
                 return jsonify({'error': 'No prompt provided'}), 400
 
+            from flux_nodes.base import Query
+
+            # ---- RAG grounding -------------------------------------------
+            dataset_id = data.get('dataset_id')
+            strict = bool(data.get('use_rag')) or bool(dataset_id)
+            context, sources = _retrieve_context(prompt, dataset_id, strict)
+
+            if strict and not context:
+                msg = "I don't have that in my provided sources."
+                return jsonify({'result': msg, 'response': msg,
+                                'node_id': 'language-mistral-7b', 'sources': []})
+
+            if context:
+                lang = node_registry.get_node('language-mistral-7b')
+                grounded = (
+                    "You are a careful assistant. Answer the question using ONLY the "
+                    "information in the sources below, and cite the source name(s) you used. "
+                    "If the answer is not contained in the sources, say: "
+                    "'I don't have that in my provided sources.'\n\n"
+                    f"Sources:\n{context}\nQuestion: {prompt}\n\nAnswer:"
+                )
+                q = Query(id=f"query_{int(time.time() * 1000)}", text=grounded,
+                          parameters={}, history=conversation_history)
+                response = lang.process(q)
+                text = response.text
+                if sources:
+                    text += "\n\n---\nSources: " + ", ".join(sources)
+                return jsonify({'result': text, 'response': text,
+                                'node_id': 'language-mistral-7b', 'sources': sources})
+
+            # ---- Normal (ungrounded) routing -----------------------------
             logger.info(f"Processing query: {prompt[:100]}...")
             if node_id and node_id != 'auto-routed':
                 node = node_registry.get_node(node_id)
@@ -180,7 +231,6 @@ def create_app():
             if not node:
                 return jsonify({'error': 'No suitable node available'}), 400
 
-            from flux_nodes.base import Query
             filepath = data.get('filepath', None)
             image_path = data.get('image_path', None)
             parameters = {}
@@ -191,7 +241,7 @@ def create_app():
                               parameters=parameters, history=conversation_history)
             response = node.process(query_obj)
             return jsonify({'result': response.text, 'response': response.text,
-                            'node_id': node.node_id,
+                            'node_id': node.node_id, 'sources': [],
                             'processing_time': getattr(response, 'processing_time_ms', 0)})
         except Exception as e:
             logger.error(f"Query processing failed: {e}")
