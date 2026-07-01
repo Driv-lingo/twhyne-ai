@@ -40,23 +40,14 @@ class LanguageNode(FluxNode):
         logger.info("Setting model path...")
         if model_path is None:
             from . import MODELS_DIR
-            logger.info(f"MODELS_DIR: {MODELS_DIR}")
-
-            # Use the available Mistral model
             self.model_path = MODELS_DIR / "mistral-7b-instruct-q4.gguf"
-            logger.info(f"Using Mistral-7B-Instruct model: {self.model_path}")
-
-            # Verify model file exists
-            if not os.path.exists(self.model_path):
-                logger.error(f"No suitable Mistral model found in {MODELS_DIR}")
-                self.is_available = False
-                return
         else:
             self.model_path = model_path
-            if not os.path.exists(self.model_path):
-                logger.error(f"Model file not found: {self.model_path}")
-                self.is_available = False
-                return
+
+        if not os.path.exists(self.model_path):
+            logger.error(f"Model file not found: {self.model_path}")
+            self.is_available = False
+            return
 
         # Add keywords for language queries
         self.keywords = {
@@ -76,23 +67,20 @@ class LanguageNode(FluxNode):
         """Generate a response based on a prompt."""
         super().generate(prompt, **kwargs)  # Update last_used time
         conversation_history = kwargs.get('conversation_history', [])
-        logger.info(f"LanguageNode generate called with prompt: {prompt[:100]}... and {len(conversation_history)} history items")
+        logger.info(f"LanguageNode generate called with prompt: {prompt[:100]}...")
         try:
-            # Lazy-load the model on first use.
             if not self.model_loaded or self.model is None:
-                logger.info("Loading Mistral model on first use (this can take a minute)...")
+                logger.info("Loading Mistral model on first use...")
                 self._load_model()
 
             if not self.model_loaded or self.model is None:
-                logger.error("Failed to load model")
                 return "Sorry, the language model failed to load."
 
-            # Format the prompt with conversation history
             formatted_prompt = self._format_prompt(prompt, conversation_history)
 
             response = self.model(
                 formatted_prompt,
-                max_tokens=512,      # Keep responses snappy on CPU
+                max_tokens=512,
                 temperature=0.5,
                 top_p=0.8,
                 top_k=20,
@@ -110,33 +98,33 @@ class LanguageNode(FluxNode):
             return f"Error: {str(e)}"
 
     def _load_model(self):
-        """Load the language model (CPU or GPU)."""
+        """Load the language model (CPU).
+
+        NOTE: use_mmap is intentionally False. On Docker Desktop (Windows/macOS)
+        the model file is read through a slow shared-filesystem layer; memory
+        mapping causes thousands of slow random reads. A single sequential read
+        (use_mmap=False) loads the model far faster in that environment.
+        """
         try:
-            gpu_available = False
             gpu_layers = 0
             try:
                 import torch
                 if torch.cuda.is_available():
-                    gpu_available = True
-                    gpu_layers = 16
-                    logger.info(f"GPU detected for LanguageNode: {torch.cuda.get_device_name(0)}")
-                else:
-                    logger.info("No GPU available for LanguageNode, using CPU only")
-            except Exception as e:
-                logger.warning(f"GPU detection failed for LanguageNode: {e}")
+                    gpu_layers = 20
+                    logger.info(f"GPU detected: {torch.cuda.get_device_name(0)}")
+            except Exception:
+                pass
 
-            device_info = "GPU-accelerated" if gpu_available else "CPU-only"
-            logger.info(f"Loading Mistral-7B model from: {self.model_path} ({device_info})")
+            logger.info(f"Loading Mistral-7B model from: {self.model_path} (mmap disabled)")
 
             self.model = Llama(
                 model_path=str(self.model_path),
-                n_ctx=4096,
-                n_batch=16,
-                use_mmap=True,
+                n_ctx=2048,
+                n_batch=512,
+                use_mmap=False,      # sequential read - much faster over Docker file share
                 use_mlock=False,
-                n_threads=8,
+                n_threads=max(2, (os.cpu_count() or 4) - 1),
                 n_gpu_layers=gpu_layers,
-                f16_kv=True,
                 verbose=False,
             )
             self.model_loaded = True
