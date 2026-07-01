@@ -6,7 +6,7 @@ echo  Twhyne AI - Launcher
 echo ============================================================
 echo.
 
-set IMAGE=ghcr.io/driv-lingo/twhyne:cpu
+set IMAGE=twhyne/twhyne:cpu
 
 REM -- License key --------------------------------------------
 if "%SNF_LICENSE_KEY%"=="" (

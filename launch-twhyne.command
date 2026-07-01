@@ -8,7 +8,7 @@ echo " Twhyne AI - Launcher"
 echo "============================================================"
 echo ""
 
-IMAGE="ghcr.io/driv-lingo/twhyne:cpu"
+IMAGE="twhyne/twhyne:cpu"
 
 # -- License key --------------------------------------------
 if [ -z "$SNF_LICENSE_KEY" ]; then
