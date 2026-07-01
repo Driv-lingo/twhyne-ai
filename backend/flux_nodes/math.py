@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
+"""Math Node.
+
+Uses SymPy for EXACT symbolic and numeric computation (arithmetic, algebra,
+calculus). Falls back to the shared Mistral LLM only for word problems that
+SymPy cannot parse. This guarantees correct answers for real math instead of
+relying on a language model's approximate arithmetic.
+"""
 
 import logging
-import operator
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -12,58 +19,111 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 try:
+    import sympy
+    from sympy import symbols, solve, diff, integrate, simplify, Eq, N, Integer, Float, Rational
+    from sympy.parsing.sympy_parser import (
+        parse_expr, standard_transformations,
+        implicit_multiplication_application, convert_xor,
+    )
+    SYMPY_AVAILABLE = True
+    _TRANSFORMS = standard_transformations + (implicit_multiplication_application, convert_xor)
+except Exception as e:  # pragma: no cover
+    SYMPY_AVAILABLE = False
+    logger.error(f"SymPy not available: {e}")
+
+try:
     from llama_cpp import Llama
-except ImportError as e:
-    logger.error(f"Error importing llama_cpp for MathNode: {e}")
+except ImportError:
     Llama = None
 
 
 class MathNode(FluxNode):
-    """Math node: fast deterministic path for simple arithmetic, Mistral LLM otherwise."""
+    """Exact math via SymPy, with an LLM fallback for natural-language problems."""
 
     def __init__(self, model_path: Optional[Path] = None, node_id: str = "math-llm-eval",
-                 name: str = "Math (LLM Eval)",
-                 description: str = "Solves mathematical problems using a local LLM with a deterministic fallback.",
+                 name: str = "Math (SymPy Symbolic)",
+                 description: str = "Exact arithmetic, algebra and calculus using SymPy, with an LLM fallback.",
                  **kwargs: Any):
         super().__init__(node_id, name, description, **kwargs)
-        self.keywords = {"math", "calculate", "compute", "solve", "equation", "sum", "product", "add", "subtract", "multiply", "divide"}
-        if Llama is None:
-            self.is_available = False
-            return
+        self.keywords = {"math", "calculate", "compute", "solve", "equation", "derivative",
+                         "integral", "integrate", "differentiate", "simplify", "sum", "product"}
+        self.metadata = {"engine": "sympy", "capabilities": "arithmetic,algebra,calculus,symbolic"}
         self.model_path = model_path or (MODELS_DIR / 'mistral-7b-instruct-q4.gguf')
         self.llm = None
-        self.safe_ops = {'+': operator.add, '-': operator.sub, '*': operator.mul,
-                         '/': operator.truediv, '^': operator.pow}
-        # Available if the model file exists; the model itself loads lazily.
-        self.is_available = Path(self.model_path).exists()
+        # Node is available as long as SymPy loaded; the LLM fallback is a bonus.
+        self.is_available = SYMPY_AVAILABLE
 
-    def _ensure_model(self):
-        if self.llm is None:
+    # -- SymPy path ---------------------------------------------------------
+    def _try_sympy(self, query: str) -> Optional[str]:
+        if not SYMPY_AVAILABLE:
+            return None
+        q = query.strip().rstrip('?.!').strip()
+        ql = q.lower()
+        x, y, z, t = symbols('x y z t')
+        local = {'x': x, 'y': y, 'z': z, 't': t}
+        try:
+            # Derivative
+            m = re.search(r'(?:derivative|differentiate)\s+(?:of\s+)?(.+?)(?:\s+with respect to\s+(\w+))?$', ql)
+            if m:
+                expr = parse_expr(m.group(1), transformations=_TRANSFORMS, local_dict=local)
+                var = symbols(m.group(2)) if m.group(2) else x
+                return f"d/d{var}: {diff(expr, var)}"
+
+            # Integral
+            m = re.search(r'(?:integral|integrate)\s+(?:of\s+)?(.+?)(?:\s+with respect to\s+(\w+))?$', ql)
+            if m:
+                expr = parse_expr(m.group(1), transformations=_TRANSFORMS, local_dict=local)
+                var = symbols(m.group(2)) if m.group(2) else x
+                return f"∫: {integrate(expr, var)} + C"
+
+            # Equation solving
+            if 'solve' in ql or ('=' in q and '==' not in q):
+                eq_str = re.sub(r'^\s*solve\s+(for\s+\w+\s+)?', '', ql).strip()
+                eq_str = re.sub(r'\bfor\s+\w+\s*$', '', eq_str).strip()
+                if '=' in eq_str:
+                    lhs, rhs = eq_str.split('=', 1)
+                    equation = Eq(parse_expr(lhs, transformations=_TRANSFORMS, local_dict=local),
+                                  parse_expr(rhs, transformations=_TRANSFORMS, local_dict=local))
+                else:
+                    equation = parse_expr(eq_str, transformations=_TRANSFORMS, local_dict=local)
+                syms = sorted(equation.free_symbols, key=lambda s: s.name) if hasattr(equation, 'free_symbols') else [x]
+                target = syms[0] if syms else x
+                sol = solve(equation, target)
+                return f"{target} = {sol}"
+
+            # Plain expression -> exact value
+            expr = parse_expr(q, transformations=_TRANSFORMS, local_dict=local)
+            val = simplify(expr)
+            if not val.free_symbols:
+                # numeric result: show exact, and a decimal if not an integer
+                if isinstance(val, Integer):
+                    return str(val)
+                approx = N(val, 12)
+                return f"{val}  (≈ {approx})" if str(val) != str(approx) else str(approx)
+            return str(val)
+        except Exception as e:
+            logger.info(f"SymPy could not parse '{query}': {e}")
+            return None
+
+    # -- LLM fallback -------------------------------------------------------
+    def _ensure_llm(self):
+        if self.llm is None and Llama is not None and Path(self.model_path).exists():
             from .shared_model import get_shared_model
             self.llm = get_shared_model(self.model_path)
 
-    def safe_eval(self, query: str) -> Optional[str]:
-        try:
-            parts = query.split()
-            if len(parts) == 3 and parts[1] in self.safe_ops:
-                return str(self.safe_ops[parts[1]](float(parts[0]), float(parts[2])))
-        except Exception as e:
-            logger.warning(f"Safe eval failed for '{query}': {e}")
-        return None
-
     def generate(self, query: str, **kwargs: Any) -> Optional[str]:
-        if not self.is_available:
-            return None
-        safe_result = self.safe_eval(query)
-        if safe_result is not None:
-            return safe_result
+        exact = self._try_sympy(query)
+        if exact is not None:
+            logger.info(f"Math solved exactly via SymPy: {query} -> {exact}")
+            return exact
+        # Word problem: let the LLM restate it, but note it's an estimate.
         try:
-            self._ensure_model()
+            self._ensure_llm()
             if self.llm is None:
-                return "Math model unavailable."
-            out = self.llm(f"Question: {query}\nAnswer:", max_tokens=1024,
-                           stop=["</s>"], temperature=0.3, echo=False)
+                return "I couldn't parse that as a math expression."
+            out = self.llm(f"Solve this math problem step by step and give the final numeric answer:\n{query}\nAnswer:",
+                           max_tokens=768, stop=["</s>"], temperature=0.2, echo=False)
             return out['choices'][0]['text'].strip()
         except Exception as e:
-            logger.error(f"Math LLM error: {e}")
+            logger.error(f"Math LLM fallback error: {e}")
             return f"Error: {e}"

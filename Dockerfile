@@ -22,10 +22,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential cmake curl procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Python dependencies (CPU build of the inference engine)
+# Python dependencies (CPU build of the inference engine + SymPy for exact math)
 RUN pip install --no-cache-dir \
         flask==3.1.1 flask-cors==6.0.1 requests==2.32.4 \
-        "numpy<2" Pillow==10.4.0 \
+        "numpy<2" Pillow==10.4.0 sympy==1.13.3 \
     && pip install --no-cache-dir llama-cpp-python
 
 # Application code
