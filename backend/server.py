@@ -22,6 +22,10 @@ from rag_manager import get_rag_manager
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Cosine-similarity (or keyword-fraction) score above which retrieved sources
+# are considered relevant enough to ground the answer on.
+GROUND_THRESHOLD = 0.30
+
 
 def _route_query(prompt: str, node_registry) -> Optional[Any]:
     logger.info(f"[ROUTING] Analyzing query: '{prompt}'")
@@ -51,7 +55,6 @@ def _route_query(prompt: str, node_registry) -> Optional[Any]:
         if node and node.is_available:
             logger.info(f"Routing to {best} (score {scores[best]})")
             return node
-
     node = node_registry.get_node('language-mistral-7b')
     if node and node.is_available:
         return node
@@ -151,27 +154,26 @@ def create_app():
         file.save(filepath)
         return jsonify({'filepath': filepath, 'message': 'File uploaded successfully'})
 
-    def _retrieve_context(prompt, dataset_id, strict):
-        """Return (context_text, [sources]) from the RAG store.
-
-        search_dataset already filters to chunks that share meaningful words
-        with the question, so ANY returned result is a real match worth
-        grounding on. strict vs auto only changes what happens when there is
-        NO match (strict -> refuse; auto -> fall through to a normal answer).
-        """
+    def _retrieve(prompt, dataset_id):
+        """Semantic retrieval. Returns (context, sources, top_score)."""
         rm = get_rag_manager()
         datasets = rm.list_datasets()
         if not dataset_id and datasets:
             dataset_id = datasets[0]['id']
         if not dataset_id:
-            return "", []
+            return "", [], 0.0
         results = rm.search_dataset(dataset_id, prompt, top_k=4)
+        if not results:
+            return "", [], 0.0
+        top_score = results[0]['score']
+        # Keep passages that are clearly relevant (within margin of the best).
+        kept = [r for r in results if r['score'] >= max(0.2, top_score - 0.15)]
         context, sources = "", []
-        for r in results:
+        for r in kept:
             context += f"[Source: {r['source']}]\n{r['content']}\n\n"
             if r['source'] not in sources:
                 sources.append(r['source'])
-        return context, sources
+        return context, sources, top_score
 
     @app.route('/query', methods=['POST', 'OPTIONS'])
     def submit_query():
@@ -191,24 +193,30 @@ def create_app():
 
             from flux_nodes.base import Query
 
-            # ---- RAG grounding -------------------------------------------
+            # ---- RETRIEVAL-FIRST ROUTING ---------------------------------
+            # The router retrieves before deciding: if trusted sources are
+            # semantically relevant, ground the answer and cite them; if the
+            # user explicitly forced RAG (use_rag/dataset_id) but nothing
+            # matches, say so; otherwise route to a specialist node.
             dataset_id = data.get('dataset_id')
-            strict = bool(data.get('use_rag')) or bool(dataset_id)
-            context, sources = _retrieve_context(prompt, dataset_id, strict)
+            forced = bool(data.get('use_rag')) or bool(dataset_id)
+            context, sources, top_score = _retrieve(prompt, dataset_id)
+            should_ground = forced or (bool(context) and top_score >= GROUND_THRESHOLD)
 
-            if strict and not context:
+            if forced and not context:
                 msg = "I don't have that in my provided sources."
                 return jsonify({'result': msg, 'response': msg,
                                 'node_id': 'language-mistral-7b', 'sources': []})
 
-            if context:
-                logger.info(f"RAG grounding active. Sources: {sources}")
+            if should_ground and context:
+                logger.info(f"Grounded answer (top_score={top_score}). Sources: {sources}")
                 lang = node_registry.get_node('language-mistral-7b')
                 grounded = (
                     "You are a careful assistant. Answer the question using ONLY the "
-                    "information in the sources below, and cite the source name(s) you used. "
-                    "If the answer is not contained in the sources, say: "
-                    "'I don't have that in my provided sources.'\n\n"
+                    "information in the sources below, and cite the source name(s). "
+                    "If the answer is not fully contained in the sources, say what IS "
+                    "supported and then say the rest is not in the provided sources. "
+                    "Do not add facts that are not in the sources.\n\n"
                     f"Sources:\n{context}\nQuestion: {prompt}\n\nAnswer:"
                 )
                 q = Query(id=f"query_{int(time.time() * 1000)}", text=grounded,
@@ -218,9 +226,10 @@ def create_app():
                 if sources:
                     text += "\n\n---\nSources: " + ", ".join(sources)
                 return jsonify({'result': text, 'response': text,
-                                'node_id': 'language-mistral-7b', 'sources': sources})
+                                'node_id': 'language-mistral-7b', 'sources': sources,
+                                'grounded': True, 'top_score': top_score})
 
-            # ---- Normal (ungrounded) routing -----------------------------
+            # ---- Specialist routing (ungrounded) -------------------------
             logger.info(f"Processing query: {prompt[:100]}...")
             if node_id and node_id != 'auto-routed':
                 node = node_registry.get_node(node_id)
@@ -241,7 +250,7 @@ def create_app():
                               parameters=parameters, history=conversation_history)
             response = node.process(query_obj)
             return jsonify({'result': response.text, 'response': response.text,
-                            'node_id': node.node_id, 'sources': [],
+                            'node_id': node.node_id, 'sources': [], 'grounded': False,
                             'processing_time': getattr(response, 'processing_time_ms', 0)})
         except Exception as e:
             logger.error(f"Query processing failed: {e}")
