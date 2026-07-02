@@ -68,9 +68,11 @@ class CodeNode(FluxNode):
 
             formatted_prompt = self._format_prompt(prompt, conversation_history)
 
+            # 512 tokens is ample for a function + explanation; 1024 at CPU
+            # speed (~3-4 tok/s) pushed a single request past 10 minutes.
             response = model(
                 formatted_prompt,
-                max_tokens=1024,
+                max_tokens=512,
                 temperature=0.4,
                 top_p=0.9,
                 top_k=40,
