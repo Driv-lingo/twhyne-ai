@@ -27,7 +27,7 @@ def get_shared_model(model_path, **overrides):
         model = _cache.get(key)
         if model is None:
             params = dict(
-                n_ctx=2048,
+                n_ctx=4096,       # room for retrieved context + question + answer
                 n_batch=512,
                 use_mmap=False,   # sequential read is far faster over Docker file shares
                 use_mlock=False,
