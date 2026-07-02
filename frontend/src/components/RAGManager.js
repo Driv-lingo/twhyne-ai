@@ -38,11 +38,18 @@ const RAGManager = ({ onNodeCreated }) => {
     }
   }, [showManager]);
 
-  const checkRAGStatus = async () => {
+  const checkRAGStatus = async (retries = 5) => {
     try {
       const response = await axios.get('http://localhost:5002/api/rag/status');
       setRagStatus(response.data);
     } catch (error) {
+      if (retries > 0) {
+        // Backend may still be starting up (loading the model). Retry a few
+        // times before showing a warning, so a startup race doesn't leave a
+        // stale "not available" banner on screen.
+        setTimeout(() => checkRAGStatus(retries - 1), 3000);
+        return;
+      }
       console.error('Error checking RAG status:', error);
       setRagStatus({ available: false });
     }
@@ -220,7 +227,15 @@ const RAGManager = ({ onNodeCreated }) => {
         {/* RAG Status */}
         {ragStatus && !ragStatus.available && (
           <div className="rag-warning">
-            ⚠️ RAG system not fully available. Install required packages for full functionality.
+            ⚠️ Can't reach the backend yet — it may still be starting up. Loading the
+            model can take a minute on first launch; this notice clears itself once
+            it's ready.
+          </div>
+        )}
+        {ragStatus && ragStatus.available && ragStatus.backend === 'keyword_fallback' && (
+          <div className="rag-warning">
+            ℹ️ Semantic search is off (embedding model not found) — using keyword
+            matching instead. Retrieval still works, results are just less precise.
           </div>
         )}
 
