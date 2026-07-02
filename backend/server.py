@@ -154,9 +154,10 @@ def create_app():
     def _retrieve_context(prompt, dataset_id, strict):
         """Return (context_text, [sources]) from the RAG store.
 
-        strict=True (explicit grounded mode): include any matching passage.
-        strict=False (auto mode): only include strong matches so general chat
-        still works when the question isn't covered by the documents.
+        search_dataset already filters to chunks that share meaningful words
+        with the question, so ANY returned result is a real match worth
+        grounding on. strict vs auto only changes what happens when there is
+        NO match (strict -> refuse; auto -> fall through to a normal answer).
         """
         rm = get_rag_manager()
         datasets = rm.list_datasets()
@@ -164,9 +165,7 @@ def create_app():
             dataset_id = datasets[0]['id']
         if not dataset_id:
             return "", []
-        results = [r for r in rm.search_dataset(dataset_id, prompt, top_k=4) if r.get('score', 0) > 0]
-        if not strict:
-            results = [r for r in results if r.get('score', 0) >= 0.3]
+        results = rm.search_dataset(dataset_id, prompt, top_k=4)
         context, sources = "", []
         for r in results:
             context += f"[Source: {r['source']}]\n{r['content']}\n\n"
@@ -203,6 +202,7 @@ def create_app():
                                 'node_id': 'language-mistral-7b', 'sources': []})
 
             if context:
+                logger.info(f"RAG grounding active. Sources: {sources}")
                 lang = node_registry.get_node('language-mistral-7b')
                 grounded = (
                     "You are a careful assistant. Answer the question using ONLY the "
