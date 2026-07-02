@@ -24,9 +24,10 @@ logger = logging.getLogger(__name__)
 
 # Cosine-similarity score above which retrieved sources ground the answer.
 GROUND_THRESHOLD = 0.30
-# Max characters of retrieved context to inject (keeps the prompt within the
-# model's context window; ~5000 chars is well under 4096 tokens).
-MAX_CONTEXT_CHARS = 5000
+# Max characters of retrieved context to inject. PDF-extracted text tokenizes
+# densely (~1 token per char in bad stretches), so this must leave real
+# headroom inside the 8192-token window for the question and the answer.
+MAX_CONTEXT_CHARS = 6500
 
 
 def _route_query(prompt: str, node_registry) -> Optional[Any]:
@@ -168,7 +169,7 @@ def create_app():
             dataset_id = datasets[0]['id']
         if not dataset_id:
             return "", [], 0.0
-        results = rm.search_dataset(dataset_id, prompt, top_k=4)
+        results = rm.search_dataset(dataset_id, prompt, top_k=8)
         if not results:
             return "", [], 0.0
         top_score = results[0]['score']
