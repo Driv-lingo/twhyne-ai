@@ -36,6 +36,21 @@ GROUND_THRESHOLD = 0.30
 MAX_CONTEXT_CHARS = 6500
 
 
+import re
+_MATH_RE = re.compile(r'\d\s*[-+*/^=]\s*\d')
+
+
+def _looks_like_math(prompt: str) -> bool:
+    """True for queries that are clearly arithmetic/algebra/calculus."""
+    p = prompt.lower()
+    if _MATH_RE.search(p):
+        return True
+    kws = ['calculate', 'compute', 'solve', 'derivative', 'integral',
+           'integrate', 'differentiate', 'square root', 'divided by',
+           'multiplied by', 'plus ', 'minus ', 'times ']
+    return any(k in p for k in kws) and any(c.isdigit() or c.isalpha() for c in p)
+
+
 def _route_query(prompt: str, node_registry) -> Optional[Any]:
     logger.info(f"[ROUTING] Analyzing query: '{prompt}'")
     p = prompt.lower().strip()
@@ -213,6 +228,22 @@ def create_app():
                 return jsonify({'error': 'No prompt provided'}), 400
 
             from flux_nodes.base import Query
+
+            # ---- DETERMINISTIC TOOLS FIRST -------------------------------
+            # Math is exact and instant (SymPy). It must short-circuit BEFORE
+            # retrieval so "2+2" never gets swept into the slow grounded path
+            # just because a document chunk happens to score above threshold.
+            if _looks_like_math(prompt):
+                math_node = node_registry.get_node('math-llm-eval')
+                if math_node and math_node.is_available:
+                    logger.info("Math shortcut: routing directly to SymPy")
+                    q = Query(id=f"query_{int(time.time() * 1000)}", text=prompt,
+                              parameters={}, history=[])
+                    with _INFER_LOCK:
+                        response = math_node.process(q)
+                    return jsonify({'result': response.text, 'response': response.text,
+                                    'node_id': 'math-llm-eval', 'sources': [],
+                                    'grounded': False})
 
             # ---- RETRIEVAL-FIRST ROUTING ---------------------------------
             dataset_id = data.get('dataset_id')
