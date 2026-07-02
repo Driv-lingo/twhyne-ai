@@ -31,11 +31,14 @@ if errorlevel 1 (
 REM -- Model directory (downloaded once) ----------------------
 set MODELS_DIR=%USERPROFILE%\.twhyne\models
 if not exist "%MODELS_DIR%" mkdir "%MODELS_DIR%"
+set RAG_DIR=%USERPROFILE%\.twhyne\rag
+if not exist "%RAG_DIR%" mkdir "%RAG_DIR%"
 
 call :get_model "mistral-7b-instruct-q4.gguf" "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 call :get_model "codellama-7b-q4.gguf"        "https://huggingface.co/TheBloke/CodeLlama-7B-GGUF/resolve/main/codellama-7b.Q4_K_M.gguf"
 call :get_model "llava-v1.5-7b-Q4_K.gguf"       "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/ggml-model-q4_k.gguf"
 call :get_model "mmproj-model-f16.gguf"         "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/mmproj-model-f16.gguf"
+call :get_model "bge-small-en-v1.5-f16.gguf"     "https://huggingface.co/CompendiumLabs/bge-small-en-v1.5-gguf/resolve/main/bge-small-en-v1.5-f16.gguf"
 
 echo.
 echo Models ready in %MODELS_DIR%
@@ -66,6 +69,7 @@ docker run --name twhyne-ai --rm ^
   -e LICENSE_API_URL=https://twhyne.com ^
   -e SNF_LICENSE_API=https://twhyne.com ^
   -v "%MODELS_DIR%:/app/models" ^
+  -v "%RAG_DIR%:/app/backend/rag_storage" ^
   -p 3000:3000 ^
   -p 5002:5002 ^
   %IMAGE%

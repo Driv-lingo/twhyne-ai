@@ -32,6 +32,8 @@ fi
 # -- Model directory (downloaded once) ----------------------
 MODELS_DIR="$HOME/.twhyne/models"
 mkdir -p "$MODELS_DIR"
+RAG_DIR="$HOME/.twhyne/rag"
+mkdir -p "$RAG_DIR"
 
 get_model() {
     local fname="$1"; local url="$2"
@@ -50,6 +52,7 @@ get_model "mistral-7b-instruct-q4.gguf" "https://huggingface.co/TheBloke/Mistral
 get_model "codellama-7b-q4.gguf"        "https://huggingface.co/TheBloke/CodeLlama-7B-GGUF/resolve/main/codellama-7b.Q4_K_M.gguf"
 get_model "llava-v1.5-7b-Q4_K.gguf"      "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/ggml-model-q4_k.gguf"
 get_model "mmproj-model-f16.gguf"        "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/mmproj-model-f16.gguf"
+get_model "bge-small-en-v1.5-f16.gguf"    "https://huggingface.co/CompendiumLabs/bge-small-en-v1.5-gguf/resolve/main/bge-small-en-v1.5-f16.gguf"
 
 echo ""
 echo "Models ready in $MODELS_DIR"
@@ -80,6 +83,7 @@ docker run --name twhyne-ai --rm \
   -e LICENSE_API_URL=https://twhyne.com \
   -e SNF_LICENSE_API=https://twhyne.com \
   -v "$MODELS_DIR:/app/models" \
+  -v "$RAG_DIR:/app/backend/rag_storage" \
   -p 3000:3000 \
   -p 5002:5002 \
   "$IMAGE"
