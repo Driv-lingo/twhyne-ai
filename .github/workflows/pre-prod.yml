@@ -75,12 +75,17 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
     - name: Run security scan on Python dependencies
       run: |
         pip install safety
-        cd backend
-        pip install -r ../requirements.txt
-        safety check || echo "Security scan completed with warnings"
+        # Scan the requirements file directly - no need to install (and
+        # compile) every dependency on the runner just to check versions.
+        safety check -r requirements.txt || echo "Security scan completed with warnings"
     
     - name: Run npm audit
       run: |
