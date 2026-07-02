@@ -22,9 +22,11 @@ from rag_manager import get_rag_manager
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Cosine-similarity (or keyword-fraction) score above which retrieved sources
-# are considered relevant enough to ground the answer on.
+# Cosine-similarity score above which retrieved sources ground the answer.
 GROUND_THRESHOLD = 0.30
+# Max characters of retrieved context to inject (keeps the prompt within the
+# model's context window; ~5000 chars is well under 4096 tokens).
+MAX_CONTEXT_CHARS = 5000
 
 
 def _route_query(prompt: str, node_registry) -> Optional[Any]:
@@ -155,7 +157,11 @@ def create_app():
         return jsonify({'filepath': filepath, 'message': 'File uploaded successfully'})
 
     def _retrieve(prompt, dataset_id):
-        """Semantic retrieval. Returns (context, sources, top_score)."""
+        """Semantic retrieval. Returns (context, sources, top_score).
+
+        Context is capped at MAX_CONTEXT_CHARS so the grounded prompt always
+        fits inside the model's context window.
+        """
         rm = get_rag_manager()
         datasets = rm.list_datasets()
         if not dataset_id and datasets:
@@ -166,11 +172,19 @@ def create_app():
         if not results:
             return "", [], 0.0
         top_score = results[0]['score']
-        # Keep passages that are clearly relevant (within margin of the best).
         kept = [r for r in results if r['score'] >= max(0.2, top_score - 0.15)]
         context, sources = "", []
         for r in kept:
-            context += f"[Source: {r['source']}]\n{r['content']}\n\n"
+            piece = f"[Source: {r['source']}]\n{r['content']}\n\n"
+            if len(context) + len(piece) > MAX_CONTEXT_CHARS:
+                # Add a truncated remainder to stay within budget, then stop.
+                remaining = MAX_CONTEXT_CHARS - len(context)
+                if remaining > 200:
+                    context += piece[:remaining]
+                    if r['source'] not in sources:
+                        sources.append(r['source'])
+                break
+            context += piece
             if r['source'] not in sources:
                 sources.append(r['source'])
         return context, sources, top_score
@@ -194,10 +208,6 @@ def create_app():
             from flux_nodes.base import Query
 
             # ---- RETRIEVAL-FIRST ROUTING ---------------------------------
-            # The router retrieves before deciding: if trusted sources are
-            # semantically relevant, ground the answer and cite them; if the
-            # user explicitly forced RAG (use_rag/dataset_id) but nothing
-            # matches, say so; otherwise route to a specialist node.
             dataset_id = data.get('dataset_id')
             forced = bool(data.get('use_rag')) or bool(dataset_id)
             context, sources, top_score = _retrieve(prompt, dataset_id)
@@ -215,12 +225,14 @@ def create_app():
                     "You are a careful assistant. Answer the question using ONLY the "
                     "information in the sources below, and cite the source name(s). "
                     "If the answer is not fully contained in the sources, say what IS "
-                    "supported and then say the rest is not in the provided sources. "
+                    "supported and note the rest is not in the provided sources. "
                     "Do not add facts that are not in the sources.\n\n"
                     f"Sources:\n{context}\nQuestion: {prompt}\n\nAnswer:"
                 )
+                # No conversation history in grounded mode - keeps the prompt
+                # small and prevents earlier long answers from leaking in.
                 q = Query(id=f"query_{int(time.time() * 1000)}", text=grounded,
-                          parameters={}, history=conversation_history)
+                          parameters={}, history=[])
                 response = lang.process(q)
                 text = response.text
                 if sources:
