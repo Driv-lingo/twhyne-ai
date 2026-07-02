@@ -2,6 +2,7 @@
 
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 import sys
@@ -21,6 +22,11 @@ from rag_manager import get_rag_manager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# llama.cpp is NOT thread-safe: two requests generating on the same model at
+# once segfault the process. All inference goes through this lock so queries
+# queue up instead of crashing the server.
+_INFER_LOCK = threading.Lock()
 
 # Cosine-similarity score above which retrieved sources ground the answer.
 GROUND_THRESHOLD = 0.30
@@ -234,7 +240,8 @@ def create_app():
                 # small and prevents earlier long answers from leaking in.
                 q = Query(id=f"query_{int(time.time() * 1000)}", text=grounded,
                           parameters={}, history=[])
-                response = lang.process(q)
+                with _INFER_LOCK:
+                    response = lang.process(q)
                 text = response.text
                 if sources:
                     text += "\n\n---\nSources: " + ", ".join(sources)
@@ -261,7 +268,8 @@ def create_app():
 
             query_obj = Query(id=f"query_{int(time.time() * 1000)}", text=prompt,
                               parameters=parameters, history=conversation_history)
-            response = node.process(query_obj)
+            with _INFER_LOCK:
+                response = node.process(query_obj)
             return jsonify({'result': response.text, 'response': response.text,
                             'node_id': node.node_id, 'sources': [], 'grounded': False,
                             'processing_time': getattr(response, 'processing_time_ms', 0)})
