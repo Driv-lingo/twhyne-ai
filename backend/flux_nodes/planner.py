@@ -37,35 +37,20 @@ class PlannerNode(FluxNode):
         self.metadata = {
             "model": "Mistral-7B-Instruct-v0.2-Local",
             "backend": "llama_cpp",
-            "context_length": "2048",
+            "context_length": "8192",
             "capabilities": "task_planning,travel_planning,project_planning,meeting_planning,resource_planning",
         }
-        self.model = None
-        self.model_loaded = False
-
-    def _ensure_model(self) -> bool:
-        if self.model_loaded and self.model is not None:
-            return True
-        try:
-            from .shared_model import get_shared_model
-            self.model = get_shared_model(self.model_path)
-            self.model_loaded = True
-            logger.info("Planner using shared Mistral instance.")
-            return True
-        except Exception as e:
-            logger.exception(f"Error loading planner model: {e}")
-            self.model_loaded = False
-            return False
 
     def generate(self, prompt: str, **kwargs: Any) -> str:
         conversation_history = kwargs.get('conversation_history', [])
-        if not self._ensure_model():
-            return "Planner node is not available. Failed to load model."
-
         plan_type = self._determine_plan_type(prompt.strip())
         enhanced_prompt = self._enhance_prompt(prompt.strip(), plan_type, conversation_history)
         try:
-            response = self.model(
+            # Fetch at call time (do not cache): the shared cache keeps ONE
+            # resident model and may have evicted ours for another node.
+            from .shared_model import get_shared_model
+            model = get_shared_model(self.model_path)
+            response = model(
                 enhanced_prompt, max_tokens=1024, temperature=0.7, top_p=0.9,
                 stop=["</s>"], echo=False,
             )

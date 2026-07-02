@@ -27,6 +27,9 @@ try:
     )
     SYMPY_AVAILABLE = True
     _TRANSFORMS = standard_transformations + (implicit_multiplication_application, convert_xor)
+    # For plain arithmetic, implicit multiplication is dangerous: it turns any
+    # leftover word ("Compute") into a product of symbols (C*o*m*p*u*t*e).
+    _ARITH_TRANSFORMS = standard_transformations + (convert_xor,)
 except Exception as e:  # pragma: no cover
     SYMPY_AVAILABLE = False
     logger.error(f"SymPy not available: {e}")
@@ -35,6 +38,42 @@ try:
     from llama_cpp import Llama
 except ImportError:
     Llama = None
+
+
+# Natural-language operators -> symbols, applied before parsing.
+_WORD_OPS = [("divided by", "/"), ("multiplied by", "*"), ("times", "*"),
+             ("plus", "+"), ("minus", "-"), ("to the power of", "**"),
+             ("power of", "**"), ("squared", "**2"), ("cubed", "**3")]
+_FILLER_RE = re.compile(r"^(what\s+is|what's|compute|calculate|evaluate|find|tell\s+me|give\s+me)\b[\s:]*", re.I)
+# Longest run of expression-safe characters (digits, x/y/z/t vars, operators).
+_EXPR_RUN_RE = re.compile(r"[0-9xyzt\.\s\+\-\*/\^\(\)=]+")
+
+
+def _normalize(query: str) -> str:
+    """Trim punctuation and replace word operators with symbols."""
+    s = query.strip().rstrip('?.!').strip()
+    sl = ' ' + s + ' '
+    for w, o in _WORD_OPS:
+        sl = re.sub(r'\s' + w + r'\s', ' ' + o.replace('*', r'\*') + ' ', sl, flags=re.I)
+    return sl.strip()
+
+
+def _extract_expression(q: str) -> Optional[str]:
+    """Pull the arithmetic expression out of a natural-language question.
+
+    "What is 23 * 244866?" -> "23 * 244866". Returns None if no expression
+    containing a digit is found (then the LLM fallback handles it).
+    """
+    s = q
+    prev = None
+    while prev != s:
+        prev = s
+        s = _FILLER_RE.sub('', s).strip()
+    runs = _EXPR_RUN_RE.findall(s)
+    if not runs:
+        return None
+    cand = max(runs, key=len).strip()
+    return cand if re.search(r'\d', cand) else None
 
 
 class MathNode(FluxNode):
@@ -49,7 +88,6 @@ class MathNode(FluxNode):
                          "integral", "integrate", "differentiate", "simplify", "sum", "product"}
         self.metadata = {"engine": "sympy", "capabilities": "arithmetic,algebra,calculus,symbolic"}
         self.model_path = model_path or (MODELS_DIR / 'mistral-7b-instruct-q4.gguf')
-        self.llm = None
         # Node is available as long as SymPy loaded; the LLM fallback is a bonus.
         self.is_available = SYMPY_AVAILABLE
 
@@ -57,7 +95,7 @@ class MathNode(FluxNode):
     def _try_sympy(self, query: str) -> Optional[str]:
         if not SYMPY_AVAILABLE:
             return None
-        q = query.strip().rstrip('?.!').strip()
+        q = _normalize(query)
         ql = q.lower()
         x, y, z, t = symbols('x y z t')
         local = {'x': x, 'y': y, 'z': z, 't': t}
@@ -78,7 +116,7 @@ class MathNode(FluxNode):
 
             # Equation solving
             if 'solve' in ql or ('=' in q and '==' not in q):
-                eq_str = re.sub(r'^\s*solve\s+(for\s+\w+\s+)?', '', ql).strip()
+                eq_str = re.sub(r'^\s*solve\s*(for\s+\w+\s*[:,]?)?\s*', '', ql).strip()
                 eq_str = re.sub(r'\bfor\s+\w+\s*$', '', eq_str).strip()
                 if '=' in eq_str:
                     lhs, rhs = eq_str.split('=', 1)
@@ -91,8 +129,12 @@ class MathNode(FluxNode):
                 sol = solve(equation, target)
                 return f"{target} = {sol}"
 
-            # Plain expression -> exact value
-            expr = parse_expr(q, transformations=_TRANSFORMS, local_dict=local)
+            # Plain expression -> exact value. Extract the expression from the
+            # sentence first so surrounding words never become symbols.
+            expr_str = _extract_expression(q)
+            if not expr_str:
+                return None
+            expr = parse_expr(expr_str, transformations=_ARITH_TRANSFORMS, local_dict=local)
             val = simplify(expr)
             if not val.free_symbols:
                 # numeric result: show exact, and a decimal if not an integer
@@ -106,11 +148,6 @@ class MathNode(FluxNode):
             return None
 
     # -- LLM fallback -------------------------------------------------------
-    def _ensure_llm(self):
-        if self.llm is None and Llama is not None and Path(self.model_path).exists():
-            from .shared_model import get_shared_model
-            self.llm = get_shared_model(self.model_path)
-
     def generate(self, query: str, **kwargs: Any) -> Optional[str]:
         exact = self._try_sympy(query)
         if exact is not None:
@@ -118,11 +155,14 @@ class MathNode(FluxNode):
             return exact
         # Word problem: let the LLM restate it, but note it's an estimate.
         try:
-            self._ensure_llm()
-            if self.llm is None:
+            if Llama is None or not Path(self.model_path).exists():
                 return "I couldn't parse that as a math expression."
-            out = self.llm(f"Solve this math problem step by step and give the final numeric answer:\n{query}\nAnswer:",
-                           max_tokens=768, stop=["</s>"], temperature=0.2, echo=False)
+            # Fetch at call time (do not cache): the shared cache keeps one
+            # resident model and may evict/reload between calls.
+            from .shared_model import get_shared_model
+            llm = get_shared_model(self.model_path)
+            out = llm(f"Solve this math problem step by step and give the final numeric answer:\n{query}\nAnswer:",
+                      max_tokens=768, stop=["</s>"], temperature=0.2, echo=False)
             return out['choices'][0]['text'].strip()
         except Exception as e:
             logger.error(f"Math LLM fallback error: {e}")

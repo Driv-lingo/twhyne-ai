@@ -38,8 +38,6 @@ class LanguageNode(FluxNode):
             "generate", "create", "help", "assist", "translate", "summarize", "essay",
             "story", "letter", "email", "report", "article", "paragraph", "sentence"
         }
-        self.model = None
-        self.model_loaded = False
         logger.info("LanguageNode ready (model loads on first query)")
 
     def generate(self, prompt: str, **kwargs) -> Optional[str]:
@@ -47,13 +45,13 @@ class LanguageNode(FluxNode):
         conversation_history = kwargs.get('conversation_history', [])
         logger.info(f"LanguageNode generate called with prompt: {prompt[:100]}...")
         try:
-            if not self.model_loaded or self.model is None:
-                self._load_model()
-            if not self.model_loaded or self.model is None:
-                return "Sorry, the language model failed to load."
+            # Fetch at call time (do not cache): the shared cache keeps ONE
+            # resident model and may have evicted ours for another node.
+            from .shared_model import get_shared_model
+            model = get_shared_model(self.model_path)
 
             formatted_prompt = self._format_prompt(prompt, conversation_history)
-            response = self.model(
+            response = model(
                 formatted_prompt,
                 max_tokens=512, temperature=0.5, top_p=0.8, top_k=20,
                 repeat_penalty=1.0, stop=["</s>"], echo=False,
@@ -62,18 +60,6 @@ class LanguageNode(FluxNode):
         except Exception as e:
             logger.error(f"Error generating response: {e}")
             return f"Error: {str(e)}"
-
-    def _load_model(self):
-        try:
-            from .shared_model import get_shared_model
-            self.model = get_shared_model(self.model_path)
-            self.model_loaded = True
-            logger.info("Mistral-7B ready (shared instance)")
-        except Exception as e:
-            logger.error(f"Failed to load model: {e}")
-            self.model = None
-            self.model_loaded = False
-            self.is_available = False
 
     def _format_prompt(self, query_text: str, conversation_history: list = None) -> str:
         if not conversation_history:
