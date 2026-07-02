@@ -1,0 +1,23 @@
+Sunrise Skilled Nursing Facility — Sample Internal Policy Excerpt (fictional, for benchmarking only)
+
+Section 4.2 — Fall Risk Assessment.
+Every resident must receive a fall risk assessment within 8 hours of admission
+and again after any fall. The facility uses the Morse Fall Scale. A resident
+with a Morse score of 45 or higher is classified as high fall risk and must
+have a yellow wristband and a bed alarm activated.
+
+Section 4.3 — Post-Fall Protocol.
+After any resident fall, staff must: (1) not move the resident until a nurse
+assesses for injury, (2) take vital signs within 15 minutes, (3) notify the
+attending physician and the resident's designated contact within 1 hour, and
+(4) complete an incident report before the end of the shift.
+
+Section 6.1 — Medication Pass Timing.
+Scheduled medications may be administered within a 60-minute window before or
+after the ordered time. Insulin ordered before meals must be given within 30
+minutes of the meal, not the standard 60-minute window.
+
+Section 9.4 — PHI Handling.
+Resident protected health information must never be transmitted to any external
+cloud service. All documentation stays on facility-managed systems. Portable
+devices storing PHI must be encrypted at rest.

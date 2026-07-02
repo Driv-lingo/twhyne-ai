@@ -1,0 +1,249 @@
+#!/usr/bin/env python3
+"""Twhyne benchmark harness (stdlib only).
+
+Sends real tasks through the RUNNING backend (default http://localhost:5002),
+scores each answer with a task-appropriate checker, and prints a per-category
+summary. Optionally compares against a cloud model for win/tie/loss.
+
+Start the Twhyne app first, then run this. No pip installs required.
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+import urllib.request
+import urllib.error
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+TASKS_FILE = HERE / "tasks.json"
+CORPUS_DIR = HERE / "corpus"
+
+
+def _post(url, payload, timeout=180):
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _get(url, timeout=30):
+    with urllib.request.urlopen(url, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+# ---- scoring helpers -------------------------------------------------------
+
+def _numbers(text):
+    """All integer-ish numbers in text, commas stripped."""
+    return {n.replace(",", "") for n in re.findall(r"-?[\d,]*\d", text)}
+
+
+def score_math(task, answer, sources):
+    want = str(task["expect_number"]).replace(",", "")
+    return want in _numbers(answer), f"expected number {want}"
+
+
+def score_grounded(task, answer, sources):
+    low = answer.lower()
+    reasons = []
+    ok = True
+    for s in task.get("expect_contains", []):
+        if s.lower() not in low:
+            ok = False; reasons.append(f"missing '{s}'")
+    anys = task.get("expect_any", [])
+    if anys and not any(a.lower() in low for a in anys):
+        ok = False; reasons.append(f"none of {anys}")
+    for s in task.get("must_not_contain", []):
+        if s.lower() in low:
+            ok = False; reasons.append(f"hallucination '{s}' present")
+    cite = task.get("must_cite")
+    if cite:
+        cited = any(cite.lower() in str(x).lower() for x in (sources or []))
+        # fall back to citation embedded in the answer text
+        cited = cited or (cite.lower() in low)
+        if not cited:
+            ok = False; reasons.append(f"did not cite '{cite}'")
+    return ok, "; ".join(reasons) or "all checks passed"
+
+
+def score_contains(task, answer, sources):
+    low = answer.lower()
+    reasons = []
+    ok = True
+    for s in task.get("expect_all", []):
+        if s.lower() not in low:
+            ok = False; reasons.append(f"missing '{s}'")
+    anys = task.get("expect_any", [])
+    if anys and not any(a.lower() in low for a in anys):
+        ok = False; reasons.append(f"none of {anys}")
+    return ok, "; ".join(reasons) or "all checks passed"
+
+
+SCORERS = {
+    "math": score_math,
+    "grounded_qa": score_grounded,
+    "code": score_contains,
+    "general": score_contains,
+}
+
+
+# ---- backend interaction ---------------------------------------------------
+
+def ensure_corpus_dataset(base_url):
+    """Create (once) a RAG dataset from corpus/ files. Returns dataset_id."""
+    files = []
+    for p in sorted(CORPUS_DIR.glob("*")):
+        if p.is_file():
+            files.append({"filename": p.stem, "content": p.read_text(encoding="utf-8", errors="ignore")})
+    if not files:
+        return None
+    name = "benchmark-corpus"
+    # Reuse if it already exists.
+    try:
+        existing = _get(base_url + "/api/rag/datasets").get("datasets", [])
+        for d in existing:
+            if d.get("name") == name:
+                return d["id"]
+    except Exception:
+        pass
+    resp = _post(base_url + "/api/rag/datasets",
+                 {"name": name, "description": "benchmark corpus", "files": files})
+    ds = resp.get("dataset", {})
+    return ds.get("id")
+
+
+def ask_twhyne(base_url, prompt, dataset_id=None, use_rag=False):
+    payload = {"prompt": prompt}
+    if use_rag and dataset_id:
+        payload["dataset_id"] = dataset_id
+        payload["use_rag"] = True
+    resp = _post(base_url + "/query", payload)
+    text = resp.get("response") or resp.get("result") or ""
+    return text, resp.get("sources", [])
+
+
+# ---- optional cloud comparison ---------------------------------------------
+
+def ask_cloud(provider, prompt):
+    if provider == "openai":
+        key = os.environ.get("OPENAI_API_KEY")
+        if not key:
+            return None
+        body = {"model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+                "messages": [{"role": "user", "content": prompt}]}
+        req = urllib.request.Request(
+            "https://api.openai.com/v1/chat/completions",
+            data=json.dumps(body).encode(), method="POST",
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
+        with urllib.request.urlopen(req, timeout=120) as r:
+            d = json.loads(r.read())
+        return d["choices"][0]["message"]["content"]
+    if provider == "anthropic":
+        key = os.environ.get("ANTHROPIC_API_KEY")
+        if not key:
+            return None
+        body = {"model": os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5"),
+                "max_tokens": 1024,
+                "messages": [{"role": "user", "content": prompt}]}
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=json.dumps(body).encode(), method="POST",
+            headers={"Content-Type": "application/json", "x-api-key": key,
+                     "anthropic-version": "2023-06-01"})
+        with urllib.request.urlopen(req, timeout=120) as r:
+            d = json.loads(r.read())
+        return "".join(b.get("text", "") for b in d.get("content", []))
+    return None
+
+
+# ---- main ------------------------------------------------------------------
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--base-url", default=os.environ.get("TWHYNE_URL", "http://localhost:5002"))
+    ap.add_argument("--cloud", choices=["openai", "anthropic"], default=None,
+                    help="also run tasks against a cloud model for comparison")
+    args = ap.parse_args()
+    base = args.base_url.rstrip("/")
+
+    try:
+        _get(base + "/status", timeout=10)
+    except Exception as e:
+        print(f"ERROR: backend not reachable at {base} ({e}).\n"
+              f"Start the Twhyne app first, then re-run.")
+        sys.exit(1)
+
+    tasks = json.loads(TASKS_FILE.read_text())
+    dataset_id = None
+    if any(t.get("use_rag") for cat in tasks.values() for t in cat):
+        print("Preparing benchmark RAG corpus...")
+        dataset_id = ensure_corpus_dataset(base)
+        print(f"  dataset_id = {dataset_id}\n")
+
+    results = []
+    cat_stats = {}
+    for category, items in tasks.items():
+        scorer = SCORERS[category]
+        for task in items:
+            t0 = time.time()
+            try:
+                answer, sources = ask_twhyne(base, task["prompt"],
+                                             dataset_id, task.get("use_rag", False))
+            except Exception as e:
+                answer, sources = f"[error: {e}]", []
+            local_ok, reason = scorer(task, answer, sources)
+            elapsed = round(time.time() - t0, 1)
+
+            cloud_ok = None
+            if args.cloud:
+                try:
+                    c = ask_cloud(args.cloud, task["prompt"])
+                    if c is not None:
+                        cloud_ok, _ = scorer(task, c, [])
+                except Exception:
+                    cloud_ok = None
+
+            st = cat_stats.setdefault(category, {"pass": 0, "total": 0,
+                                                 "cloud_pass": 0, "cloud_total": 0})
+            st["total"] += 1
+            st["pass"] += int(local_ok)
+            if cloud_ok is not None:
+                st["cloud_total"] += 1
+                st["cloud_pass"] += int(cloud_ok)
+
+            flag = "PASS" if local_ok else "FAIL"
+            extra = ""
+            if cloud_ok is not None:
+                extra = f"  cloud={'PASS' if cloud_ok else 'FAIL'}"
+            print(f"[{flag}] {category}/{task['id']} ({elapsed}s){extra}  {reason}")
+            if not local_ok:
+                print(f"        answer: {answer[:200].replace(chr(10), ' ')}")
+            results.append({"category": category, "id": task["id"],
+                            "prompt": task["prompt"], "local_pass": local_ok,
+                            "cloud_pass": cloud_ok, "reason": reason,
+                            "elapsed_s": elapsed, "answer": answer, "sources": sources})
+
+    print("\n" + "=" * 60)
+    print(" SUMMARY")
+    print("=" * 60)
+    tot_p = tot_t = 0
+    for cat, st in cat_stats.items():
+        tot_p += st["pass"]; tot_t += st["total"]
+        line = f"  {cat:14s} {st['pass']}/{st['total']} local"
+        if st["cloud_total"]:
+            line += f"   vs cloud {st['cloud_pass']}/{st['cloud_total']}"
+        print(line)
+    print("-" * 60)
+    print(f"  {'TOTAL':14s} {tot_p}/{tot_t} local  ({round(100*tot_p/max(tot_t,1))}%)")
+
+    out = HERE / "results.json"
+    out.write_text(json.dumps(results, indent=2))
+    print(f"\nDetailed results written to {out}")
+
+
+if __name__ == "__main__":
+    main()

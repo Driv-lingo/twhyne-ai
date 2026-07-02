@@ -1,0 +1,47 @@
+{
+  "math": [
+    {"id": "m1", "prompt": "What is 23 * 244866?", "expect_number": "5631918"},
+    {"id": "m2", "prompt": "What is 12 * 244688?", "expect_number": "2936256"},
+    {"id": "m3", "prompt": "Compute 987654 + 123456.", "expect_number": "1111110"},
+    {"id": "m4", "prompt": "What is 144 divided by 12?", "expect_number": "12"},
+    {"id": "m5", "prompt": "Solve for x: 3*x + 6 = 21", "expect_number": "5"}
+  ],
+  "grounded_qa": [
+    {"id": "g1",
+     "prompt": "At what Morse Fall Scale score is a resident classified as high fall risk, and what two things are required?",
+     "use_rag": true,
+     "expect_contains": ["45"],
+     "expect_any": ["yellow wristband", "bed alarm"],
+     "must_cite": "snf_sample_policy",
+     "must_not_contain": ["50", "green"]},
+    {"id": "g2",
+     "prompt": "Within how long after a fall must vital signs be taken?",
+     "use_rag": true,
+     "expect_contains": ["15"],
+     "must_cite": "snf_sample_policy"},
+    {"id": "g3",
+     "prompt": "Can resident PHI be sent to an external cloud service according to policy?",
+     "use_rag": true,
+     "expect_any": ["never", "no", "not"],
+     "must_cite": "snf_sample_policy"},
+    {"id": "g4",
+     "prompt": "What is the medication pass window for insulin ordered before meals?",
+     "use_rag": true,
+     "expect_contains": ["30"],
+     "must_cite": "snf_sample_policy",
+     "must_not_contain": ["60 minutes of the meal"]}
+  ],
+  "code": [
+    {"id": "c1",
+     "prompt": "Write a Python function called is_even that returns True if a number is even.",
+     "expect_all": ["def is_even", "% 2"]},
+    {"id": "c2",
+     "prompt": "Write a Python function to reverse a string.",
+     "expect_any": ["[::-1]", "reversed("]}
+  ],
+  "general": [
+    {"id": "gen1",
+     "prompt": "Name the primary color that results from mixing blue and yellow paint.",
+     "expect_any": ["green"]}
+  ]
+}
