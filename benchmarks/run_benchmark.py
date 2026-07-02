@@ -23,7 +23,7 @@ TASKS_FILE = HERE / "tasks.json"
 CORPUS_DIR = HERE / "corpus"
 
 
-def _post(url, payload, timeout=180):
+def _post(url, payload, timeout=600):
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
