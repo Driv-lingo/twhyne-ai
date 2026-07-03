@@ -88,6 +88,7 @@ SCORERS = {
     "grounded_qa": score_grounded,
     "code": score_contains,
     "general": score_contains,
+    "reasoning": score_contains,
 }
 
 
@@ -101,7 +102,9 @@ def ensure_corpus_dataset(base_url):
             files.append({"filename": p.stem, "content": p.read_text(encoding="utf-8", errors="ignore")})
     if not files:
         return None
-    name = "benchmark-corpus"
+    # v2: bump when corpus files change, so a stale dataset from an earlier
+    # run is not silently reused without the new documents.
+    name = "benchmark-corpus-v2"
     # Reuse if it already exists.
     try:
         existing = _get(base_url + "/api/rag/datasets").get("datasets", [])
