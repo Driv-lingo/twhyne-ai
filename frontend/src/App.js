@@ -117,6 +117,12 @@ function App() {
   const [history, setHistory] = useState([]);
   const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // Request tracking: cancelling must invalidate the in-flight request so a
+  // late-arriving response can never attach to a later question (this caused
+  // an off-by-one where every answer landed under the wrong message).
+  const requestIdRef = useRef(0);
+  const activeRequestRef = useRef(null);
+  const abortRef = useRef(null);
   const [selectedNode, setSelectedNode] = useState(null);
   const [nodeStatus, setNodeStatus] = useState({});
   const [useRemote, setUseRemote] = useState(false);
@@ -374,7 +380,12 @@ function App() {
   // Handle query submission
   const handleSubmit = async () => {
     if ((!query.trim() && !file) || isLoading) return;
-    
+
+    const myRequestId = ++requestIdRef.current;
+    activeRequestRef.current = myRequestId;
+    abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
+
     const userQuery = query; // Save query before clearing
     const userTurn = {
       role: 'user',
@@ -409,7 +420,7 @@ function App() {
         }
         payload = formData;
         // Make upload request
-        const uploadRes = await axios.post(endpoint, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
+        const uploadRes = await axios.post(endpoint, payload, { headers: { 'Content-Type': 'multipart/form-data' }, signal });
         uploadedFilePath = uploadRes.data.filepath;
         setFile(null); // Clear the file after upload
         // Now make a query request with the uploaded file path
@@ -425,9 +436,11 @@ function App() {
         const queryRes = await axios.post(endpoint, payload, {
           headers: {
             'Content-Type': 'application/json'
-          }
+          },
+          signal
         });
-        // Process response as usual
+        // Discard if this request was cancelled while in flight.
+        if (activeRequestRef.current !== myRequestId) return;
         const assistantTurn = {
           role: 'assistant',
           content: queryRes.data.response
@@ -448,8 +461,11 @@ function App() {
         const res = await axios.post(endpoint, payload, {
           headers: {
             'Content-Type': 'application/json'
-          }
+          },
+          signal
         });
+        // Discard if this request was cancelled while in flight.
+        if (activeRequestRef.current !== myRequestId) return;
         const assistantTurn = {
           role: 'assistant',
           content: res.data.response
@@ -458,6 +474,8 @@ function App() {
         setResponse(res.data.response);
       }
     } catch (err) {
+      // A cancelled/stale request must not write anything to the chat.
+      if (activeRequestRef.current !== myRequestId || axios.isCancel?.(err) || err.name === 'CanceledError') return;
       console.error('Error submitting query:', err);
       console.error('Error details:', err.response?.data || err.message);
       let errorMessage;
@@ -477,14 +495,19 @@ function App() {
         error: true
       }]);
     } finally {
-      setIsLoading(false);
+      if (activeRequestRef.current === myRequestId) setIsLoading(false);
     }
   };
   
   // Handle continue request
   const handleContinue = async () => {
     if (history.length === 0 || isLoading) return;
-    
+
+    const myRequestId = ++requestIdRef.current;
+    activeRequestRef.current = myRequestId;
+    abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
+
     setIsLoading(true);
     setFeedbackSent(false);
     
@@ -499,8 +522,10 @@ function App() {
         prompt: 'Please continue your previous response.',
         conversation_history: history,
         node_id: activeNodeId
-      });
-      
+      }, { signal });
+
+      // Discard if this request was cancelled while in flight.
+      if (activeRequestRef.current !== myRequestId) return;
       const assistantTurn = {
         role: 'assistant',
         content: res.data.result || res.data.response,
@@ -511,6 +536,7 @@ function App() {
       setHistory(prev => [...prev, assistantTurn]);
       
     } catch (err) {
+      if (activeRequestRef.current !== myRequestId || axios.isCancel?.(err) || err.name === 'CanceledError') return;
       let errorMessage;
       if (err.response && err.response.status === 503) {
         errorMessage = 'The language service is currently starting up. Please try again in a few seconds.';
@@ -529,8 +555,10 @@ function App() {
         error: true
       }]);
     } finally {
-      setIsLoading(false);
-      setProcessingNode(null);
+      if (activeRequestRef.current === myRequestId) {
+        setIsLoading(false);
+        setProcessingNode(null);
+      }
     }
   };
   
@@ -550,8 +578,15 @@ function App() {
   // Handle cancel operation
   const handleCancel = () => {
     if (!isLoading) return;
-    
-    // Cannot actually cancel the request, but we can reset the UI state
+
+    // Invalidate the in-flight request so its response is DISCARDED when it
+    // eventually arrives (never attached to a later question), and abort the
+    // HTTP request client-side. The backend may still finish computing the
+    // abandoned answer; it just goes nowhere.
+    activeRequestRef.current = null;
+    if (abortRef.current) {
+      try { abortRef.current.abort(); } catch (e) { /* already settled */ }
+    }
     setIsLoading(false);
     setProcessingNode(null);
     
