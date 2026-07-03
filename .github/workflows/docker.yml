@@ -25,12 +25,59 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
+      # Build locally first - the image is only pushed after it passes the
+      # smoke tests below. A green build alone is not proof the image works:
+      # both the musl-libc mismatch and the AVX-512 illegal-instruction bug
+      # shipped behind green builds and crashed only at runtime.
+      - name: Build image (candidate, not pushed)
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
-          push: true
-          tags: |
-            twhyne/twhyne:cpu
-            twhyne/twhyne:latest
+          load: true
+          push: false
+          tags: twhyne/twhyne:candidate
+
+      - name: Smoke test 1 - engine and deps import
+        run: |
+          docker run --rm --entrypoint python3 twhyne/twhyne:candidate \
+            -c "import flask, sympy; from llama_cpp import Llama; print('engine imports OK')"
+
+      - name: Smoke test 2 - backend boots and answers exact math
+        run: |
+          docker run -d --name smoke --entrypoint python3 -p 5002:5002 \
+            twhyne/twhyne:candidate /app/backend/server.py
+          ok=""
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:5002/status > /dev/null; then ok=1; break; fi
+            sleep 2
+          done
+          if [ -z "$ok" ]; then echo 'backend never came up'; docker logs smoke; exit 1; fi
+          curl -fs http://localhost:5002/nodes > /dev/null
+          curl -fs http://localhost:5002/api/rag/status > /dev/null
+          # Exact math via SymPy needs no model files and must be correct.
+          RESP=$(curl -fs -X POST http://localhost:5002/query \
+            -H 'Content-Type: application/json' \
+            -d '{"prompt":"What is 23 * 244866?"}')
+          echo "query response: $RESP"
+          echo "$RESP" | grep -q 5631918 || { echo 'exact math check FAILED'; docker logs smoke; exit 1; }
+          docker rm -f smoke
+
+      - name: Smoke test 3 - real inference through the embedding model
+        run: |
+          mkdir -p /tmp/models
+          curl -Ls -o /tmp/models/bge-small-en-v1.5-f16.gguf \
+            https://huggingface.co/CompendiumLabs/bge-small-en-v1.5-gguf/resolve/main/bge-small-en-v1.5-f16.gguf
+          docker run --rm --entrypoint python3 -v /tmp/models:/app/models twhyne/twhyne:candidate -c "
+          from llama_cpp import Llama
+          m = Llama(model_path='/app/models/bge-small-en-v1.5-f16.gguf', embedding=True, n_ctx=512, verbose=False)
+          e = m.create_embedding('hello world')['data'][0]['embedding']
+          assert len(e) >= 128, 'embedding too short'
+          print('real inference OK, dim', len(e))"
+
+      - name: Push image (only after all smoke tests pass)
+        run: |
+          docker tag twhyne/twhyne:candidate twhyne/twhyne:cpu
+          docker tag twhyne/twhyne:candidate twhyne/twhyne:latest
+          docker push twhyne/twhyne:cpu
+          docker push twhyne/twhyne:latest
