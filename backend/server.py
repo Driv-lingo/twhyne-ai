@@ -64,6 +64,12 @@ def _recent_context(history, cap=600):
 def _looks_like_math(prompt: str) -> bool:
     """True for queries that are clearly arithmetic/algebra/calculus."""
     p = prompt.lower()
+    # Users type unicode operators and thousands separators ("47 × 8,912");
+    # normalize them or the math shortcut misses and an LLM guesses at
+    # arithmetic - the exact failure SymPy exists to prevent.
+    p = (p.replace('×', '*').replace('÷', '/')
+          .replace('−', '-').replace('·', '*'))
+    p = re.sub(r'(?<=\d),(?=\d)', '', p)
     if _MATH_RE.search(p):
         return True
     kws = ['calculate', 'compute', 'solve', 'derivative', 'integral',
