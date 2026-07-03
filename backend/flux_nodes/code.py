@@ -127,7 +127,8 @@ class CodeNode(FluxNode):
             from .shared_model import get_shared_model
             model = get_shared_model(self.model_path, n_ctx=4096)
 
-            raw = self._generate_once(model, self._format_prompt(prompt))
+            history = kwargs.get('conversation_history', [])
+            raw = self._generate_once(model, self._format_prompt(prompt, history))
             code = _extract_code(raw)
             if code is None:
                 return raw  # no code block found; return the text as-is
@@ -135,7 +136,7 @@ class CodeNode(FluxNode):
             ok, err = _verify_code(code)
             if not ok:
                 logger.info(f"Generated code failed verification ({err}); retrying once")
-                retry_prompt = self._format_prompt(prompt) + (
+                retry_prompt = self._format_prompt(prompt, history) + (
                     f"\n\nA previous attempt produced this code:\n{code}\n\n"
                     f"It failed with this error:\n{err}\n\n"
                     "Write a corrected version.\n\nCode:"
@@ -163,10 +164,17 @@ class CodeNode(FluxNode):
             return f"Error: {str(e)}"
 
     def _format_prompt(self, query_text: str, conversation_history: list = None) -> str:
-        """Format the prompt for the code model."""
+        """Format the prompt for the code model, with capped follow-up context."""
+        ctx = ""
+        if conversation_history:
+            parts = []
+            for msg in conversation_history[-2:]:
+                role = 'User' if msg.get('role') == 'user' else 'Assistant'
+                parts.append(f"{role}: {str(msg.get('content', ''))[:300]}")
+            ctx = "Recent conversation (the request may refer to it):\n" + "\n".join(parts) + "\n\n"
         return f"""You are a helpful coding assistant. Generate clean, working Python code for the following request:
 
-Request: {query_text}
+{ctx}Request: {query_text}
 
 Provide ONE complete, ready-to-run Python code block with necessary imports and brief comments. Do not add extra exercises or commentary after the code.
 

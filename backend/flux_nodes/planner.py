@@ -83,4 +83,11 @@ class PlannerNode(FluxNode):
             "general_planning": "You are an expert Planner. Create a detailed, structured plan with clear steps and objectives.",
         }
         base = prompts.get(plan_type, prompts["general_planning"])
-        return f"[INST] {base}\n\nRequest: {query_text}\n\nProvide a detailed, structured plan with clear steps. [/INST]"
+        ctx = ""
+        if conversation_history:
+            parts = []
+            for msg in conversation_history[-2:]:
+                role = 'User' if msg.get('role') == 'user' else 'Assistant'
+                parts.append(f"{role}: {str(msg.get('content', ''))[:300]}")
+            ctx = "Recent conversation (the request may refer to it):\n" + "\n".join(parts) + "\n\n"
+        return f"[INST] {base}\n\n{ctx}Request: {query_text}\n\nProvide a detailed, structured plan with clear steps. [/INST]"

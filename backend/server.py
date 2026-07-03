@@ -44,6 +44,23 @@ import re
 _MATH_RE = re.compile(r'\d\s*[-+*/^=]\s*\d')
 
 
+def _recent_context(history, cap=600):
+    """Last user/assistant exchange, trimmed hard.
+
+    Gives specialists and grounded answers enough memory for follow-ups
+    ("now make it recursive", "what about section 5?") without re-inflating
+    the prompt toward the token-overflow failures the full history caused.
+    """
+    if not history:
+        return ""
+    parts = []
+    for msg in history[-2:]:
+        role = 'User' if msg.get('role') == 'user' else 'Assistant'
+        content = str(msg.get('content', ''))[:cap // 2]
+        parts.append(f"{role}: {content}")
+    return "\n".join(parts)[:cap]
+
+
 def _looks_like_math(prompt: str) -> bool:
     """True for queries that are clearly arithmetic/algebra/calculus."""
     p = prompt.lower()
@@ -327,16 +344,21 @@ def create_app():
             if should_ground and context:
                 logger.info(f"Grounded answer (top_score={top_score}). Sources: {sources}")
                 lang = node_registry.get_node('language-mistral-7b')
+                recent = _recent_context(conversation_history)
+                hist_block = (f"Recent conversation (for reference only):\n{recent}\n\n"
+                              if recent else "")
                 grounded = (
                     "You are a careful assistant. Answer the question using ONLY the "
                     "information in the sources below, and cite the source name(s). "
                     "If the answer is not fully contained in the sources, say what IS "
                     "supported and note the rest is not in the provided sources. "
                     "Do not add facts that are not in the sources.\n\n"
+                    f"{hist_block}"
                     f"Sources:\n{context}\nQuestion: {prompt}\n\nAnswer:"
                 )
-                # No conversation history in grounded mode - keeps the prompt
-                # small and prevents earlier long answers from leaking in.
+                # Full conversation history stays out of grounded mode (it
+                # caused token overflows); the capped snippet above is enough
+                # for follow-up questions.
                 q = Query(id=f"query_{int(time.time() * 1000)}", text=grounded,
                           parameters={}, history=[])
                 with _INFER_LOCK:
