@@ -52,6 +52,11 @@ _EXPR_RUN_RE = re.compile(r"[0-9xyzt\.\s\+\-\*/\^\(\)=]+")
 def _normalize(query: str) -> str:
     """Trim punctuation and replace word operators with symbols."""
     s = query.strip().rstrip('?.!').strip()
+    # Real users type unicode operators and thousands separators:
+    # "47 × 8,912" must become "47 * 8912" before parsing.
+    s = (s.replace('×', '*').replace('÷', '/')
+          .replace('−', '-').replace('·', '*'))
+    s = re.sub(r'(?<=\d),(?=\d)', '', s)
     sl = ' ' + s + ' '
     for w, o in _WORD_OPS:
         sl = re.sub(r'\s' + w + r'\s', ' ' + o.replace('*', r'\*') + ' ', sl, flags=re.I)

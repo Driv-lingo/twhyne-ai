@@ -28,6 +28,10 @@ def _node():
     ("What is 144 divided by 12?", "12"),
     ("2+2", "4"),
     ("what is 2 plus 2", "4"),
+    # Live-test regressions: unicode operators and thousands separators.
+    ("what is 47 × 8,912?", "418864"),
+    ("6 ÷ 2", "3"),
+    ("1,000 + 2,500", "3500"),
 ])
 def test_exact_arithmetic(prompt, expected):
     out = _node()._try_sympy(prompt)
