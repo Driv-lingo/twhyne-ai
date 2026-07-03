@@ -1,19 +1,28 @@
 #!/usr/bin/env python3
-"""Shared llama.cpp model cache (single resident model).
+"""Shared llama.cpp model cache (single resident model, fast swaps).
 
 Multiple expert nodes (Language, Math, Planner) use the SAME Mistral model
-file, so one loaded instance serves all of them. Additionally, only ONE model
-is kept in memory at a time: two 7B models resident together (e.g. Mistral +
-CodeLlama) exceed a 12GB Docker VM and swap-thrash until every request times
-out. Requesting a different model evicts the current one first. Nodes must
-call get_shared_model() at generate time rather than caching the returned
-object, so eviction actually frees the memory.
+file, so one loaded instance serves all of them. Only ONE model is kept in
+memory at a time: two 7B models resident together exceed a 12GB Docker VM
+and swap-thrash until every request times out. Requesting a different model
+evicts the current one first. Nodes must call get_shared_model() at generate
+time rather than caching the returned object, so eviction actually frees the
+memory.
+
+FAST SWAP: the mounted models volume crosses the Docker/Windows file-share
+bridge, so re-reading 4GB on every model switch costs ~60s. On first load a
+model is copied once to container-local disk and mmap'd from there; the OS
+page cache then makes later swaps back to a recently-used model near-instant.
+Falls back to reading the volume directly when local disk is tight.
+Opt out with TWHYNE_FAST_SWAP=0.
 """
 
 import gc
 import os
+import shutil
 import threading
 import logging
+from pathlib import Path
 
 from llama_cpp import Llama
 
@@ -21,6 +30,32 @@ logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 _cache = {}
+
+_LOCAL_CACHE_DIR = Path('/app/model_cache')
+
+
+def _fast_local_copy(path: str):
+    """Copy the model to container-local disk once. Returns (path, is_local)."""
+    if os.environ.get('TWHYNE_FAST_SWAP', '1') == '0':
+        return path, False
+    src = Path(path)
+    try:
+        _LOCAL_CACHE_DIR.mkdir(exist_ok=True)
+        dest = _LOCAL_CACHE_DIR / src.name
+        if dest.exists() and dest.stat().st_size == src.stat().st_size:
+            return str(dest), True
+        free = shutil.disk_usage(_LOCAL_CACHE_DIR).free
+        if free < src.stat().st_size * 1.2:
+            logger.info(f"Fast-swap cache skipped for {src.name} (insufficient local disk)")
+            return str(src), False
+        logger.info(f"Caching {src.name} to local disk for fast swaps (one-time copy)...")
+        tmp = dest.with_suffix('.part')
+        shutil.copyfile(src, tmp)
+        tmp.rename(dest)
+        return str(dest), True
+    except Exception as e:
+        logger.warning(f"Fast-swap cache failed for {src}: {e}")
+        return str(path), False
 
 
 def get_shared_model(model_path, **overrides):
@@ -44,18 +79,22 @@ def get_shared_model(model_path, **overrides):
             del old
         gc.collect()
 
+        load_path, is_local = _fast_local_copy(key)
         params = dict(
             n_ctx=8192,       # room for retrieved context + question + answer
             n_batch=512,
-            use_mmap=False,   # sequential read is far faster over Docker file shares
+            # mmap from local disk: the OS page cache keeps recently used
+            # models hot, so swapping back to one is near-instant. Over the
+            # slow Docker volume bridge, a sequential full read is faster.
+            use_mmap=is_local,
             use_mlock=False,
             n_threads=max(2, (os.cpu_count() or 4) - 1),
-            n_gpu_layers=0,
+            n_gpu_layers=int(os.environ.get('TWHYNE_GPU_LAYERS', '0')),
             verbose=False,
         )
         params.update(overrides)
-        logger.info(f"Loading shared model into memory: {key}")
-        model = Llama(model_path=key, **params)
+        logger.info(f"Loading shared model into memory: {load_path}")
+        model = Llama(model_path=load_path, **params)
         _cache[key] = model
         logger.info(f"Shared model loaded: {key}")
         return model

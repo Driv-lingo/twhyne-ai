@@ -77,6 +77,15 @@ def _route_query(prompt: str, node_registry) -> Optional[Any]:
         if kw in p:
             scores['vision-llava-1.6-7b'] += 1
 
+    # Registry-loaded custom nodes compete via their declared keywords.
+    for node in node_registry.get_all_nodes():
+        if node.node_id in scores:
+            continue
+        kws = getattr(node, 'keywords', None) or []
+        s = sum(2 for kw in kws if kw in p)
+        if s:
+            scores[node.node_id] = s
+
     best = max(scores, key=scores.get)
     if scores[best] > 0:
         node = node_registry.get_node(best)
@@ -125,6 +134,35 @@ def create_app():
             logger.info(f"Registered node: {n.name} ({n.node_id})")
         except Exception as e:
             logger.error(f"Failed to register a node: {e}")
+
+    # ---- Custom model registry ---------------------------------------
+    # Drop any GGUF into the models folder and describe it in nodes.json
+    # to add an expert without code changes or a rebuild. Format:
+    # backend/nodes.example.json.
+    try:
+        registry_file = models_dir / 'nodes.json'
+        if registry_file.exists():
+            import json as _json
+            from flux_nodes.custom import CustomLLMNode
+            for entry in _json.loads(registry_file.read_text()):
+                try:
+                    n = CustomLLMNode(
+                        node_id=entry['node_id'],
+                        name=entry.get('name', entry['node_id']),
+                        description=entry.get('description', ''),
+                        model_path=models_dir / entry['model_file'],
+                        keywords=entry.get('keywords', []),
+                        prompt_template=entry.get('prompt_template'),
+                        n_ctx=int(entry.get('n_ctx', 4096)),
+                        max_tokens=int(entry.get('max_tokens', 512)),
+                        temperature=float(entry.get('temperature', 0.5)),
+                    )
+                    node_registry.register_node(n)
+                    logger.info(f"Registered custom node: {n.name} ({n.node_id})")
+                except Exception as ce:
+                    logger.error(f"Failed to load custom node {entry}: {ce}")
+    except Exception as e:
+        logger.error(f"Custom node registry error: {e}")
 
     @app.route('/status', methods=['GET', 'OPTIONS'])
     def health_check():
@@ -259,8 +297,11 @@ def create_app():
             forced = bool(data.get('use_rag')) or bool(dataset_id)
             if not forced:
                 specialist = _route_query(prompt, node_registry)
-                if specialist and specialist.node_id in (
-                        'code-codellama-7b', 'vision-llava-1.6-7b', 'planner-mistral-7b'):
+                # Anything that isn't general language (math was handled
+                # above) is a deliberate specialist match - including
+                # registry-loaded custom nodes.
+                if specialist and specialist.node_id not in (
+                        'language-mistral-7b', 'math-llm-eval'):
                     logger.info(f"Specialist shortcut: {specialist.node_id} (skipping retrieval)")
                     parameters = {}
                     image_path = data.get('image_path') or data.get('filepath')
