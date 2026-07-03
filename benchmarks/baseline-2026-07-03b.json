@@ -1,0 +1,20 @@
+{
+  "date": "2026-07-03",
+  "note": "Baseline #2 - after live-test hardening (unicode math, hard cancellation, self-test code verification)",
+  "image": "twhyne/twhyne:cpu (commit 268ef016)",
+  "hardware": "Intel Core Ultra 7 155U, 6 CPUs / 12GB to Docker, CPU-only",
+  "total": "14/14 (100%)",
+  "summary": {
+    "math": "6/6 exact via SymPy, all under 0.1s, including unicode operators and thousands separators",
+    "grounded_qa": "4/4 with correct citations and section numbers",
+    "code": "2/2; c1 passed self-generated assert tests, c2 honestly labeled executed-only",
+    "general": "1/1",
+    "scenarios": "1/1 - cancel mid-flight then unrelated question returns its own exact answer"
+  },
+  "highlight_answers": {
+    "m6": "what is 47 × 8,912? -> 418864 (0.0s) - the exact live-test failure, now instant and exact",
+    "c1_label": "Verified: the code was executed and passed its self-generated assert tests.",
+    "c2_label": "Verified: this code compiles and runs without errors (no self-tests were generated - review the logic before relying on it).",
+    "cancel_stale": "exact answer after cancel (127.9s including the abandoned job draining)"
+  }
+}
