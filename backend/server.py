@@ -29,7 +29,11 @@ logger = logging.getLogger(__name__)
 _INFER_LOCK = threading.Lock()
 
 # Cosine-similarity score above which retrieved sources ground the answer.
-GROUND_THRESHOLD = 0.30
+# BGE cosine scores have a high floor: unrelated query/passage pairs still
+# score ~0.53-0.58 (observed: "write a Python function" vs a giraffe manual
+# = 0.57), while genuinely relevant pairs score 0.61-0.79. 0.60 splits the
+# two bands; 0.30 grounded literally everything.
+GROUND_THRESHOLD = 0.60
 # Max characters of retrieved context to inject. PDF-extracted text tokenizes
 # densely (~1 token per char in bad stretches), so this must leave real
 # headroom inside the 8192-token window for the question and the answer.
@@ -245,9 +249,32 @@ def create_app():
                                     'node_id': 'math-llm-eval', 'sources': [],
                                     'grounded': False})
 
-            # ---- RETRIEVAL-FIRST ROUTING ---------------------------------
+            # ---- SPECIALIST SHORTCUT -------------------------------------
+            # If keyword routing clearly picks a non-language specialist
+            # (code/vision/planner) and the caller didn't explicitly attach a
+            # dataset, skip retrieval: "Write a Python function" must go to
+            # the code model, not get grounded against whatever documents
+            # happen to be loaded.
             dataset_id = data.get('dataset_id')
             forced = bool(data.get('use_rag')) or bool(dataset_id)
+            if not forced:
+                specialist = _route_query(prompt, node_registry)
+                if specialist and specialist.node_id in (
+                        'code-codellama-7b', 'vision-llava-1.6-7b', 'planner-mistral-7b'):
+                    logger.info(f"Specialist shortcut: {specialist.node_id} (skipping retrieval)")
+                    parameters = {}
+                    image_path = data.get('image_path') or data.get('filepath')
+                    if image_path and specialist.node_id == 'vision-llava-1.6-7b':
+                        parameters['image_path'] = image_path
+                    q = Query(id=f"query_{int(time.time() * 1000)}", text=prompt,
+                              parameters=parameters, history=conversation_history)
+                    with _INFER_LOCK:
+                        response = specialist.process(q)
+                    return jsonify({'result': response.text, 'response': response.text,
+                                    'node_id': specialist.node_id, 'sources': [],
+                                    'grounded': False})
+
+            # ---- RETRIEVAL-FIRST ROUTING ---------------------------------
             context, sources, top_score = _retrieve(prompt, dataset_id)
             should_ground = forced or (bool(context) and top_score >= GROUND_THRESHOLD)
 
