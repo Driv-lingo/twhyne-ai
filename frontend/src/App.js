@@ -123,6 +123,7 @@ function App() {
   const requestIdRef = useRef(0);
   const activeRequestRef = useRef(null);
   const abortRef = useRef(null);
+  const activeClientIdRef = useRef(null);
   const [selectedNode, setSelectedNode] = useState(null);
   const [nodeStatus, setNodeStatus] = useState({});
   const [useRemote, setUseRemote] = useState(false);
@@ -385,6 +386,9 @@ function App() {
     activeRequestRef.current = myRequestId;
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
+    // Backend-visible id: lets Cancel skip this job if it is still queued.
+    const clientRequestId = `${Date.now()}-${myRequestId}`;
+    activeClientIdRef.current = clientRequestId;
 
     const userQuery = query; // Save query before clearing
     const userTurn = {
@@ -428,7 +432,8 @@ function App() {
         payload = {
           prompt: userQuery,
           image_path: uploadedFilePath,
-          conversation_history: history
+          conversation_history: history,
+          client_request_id: clientRequestId
         };
         if (selectedNode) {
           payload.node_id = selectedNode;
@@ -453,6 +458,7 @@ function App() {
         payload = {
           prompt: userQuery,
           conversation_history: history,
+          client_request_id: clientRequestId
         };
         // Only add node_id if a specific node is selected
         if (selectedNode) {
@@ -507,6 +513,8 @@ function App() {
     activeRequestRef.current = myRequestId;
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
+    const clientRequestId = `${Date.now()}-${myRequestId}`;
+    activeClientIdRef.current = clientRequestId;
 
     setIsLoading(true);
     setFeedbackSent(false);
@@ -521,7 +529,8 @@ function App() {
       const res = await axios.post('http://127.0.0.1:5002/query', {
         prompt: 'Please continue your previous response.',
         conversation_history: history,
-        node_id: activeNodeId
+        node_id: activeNodeId,
+        client_request_id: clientRequestId
       }, { signal });
 
       // Discard if this request was cancelled while in flight.
@@ -586,6 +595,11 @@ function App() {
     activeRequestRef.current = null;
     if (abortRef.current) {
       try { abortRef.current.abort(); } catch (e) { /* already settled */ }
+    }
+    // Tell the backend so a still-queued job is skipped, not computed.
+    if (activeClientIdRef.current) {
+      axios.post('http://127.0.0.1:5002/cancel',
+        { client_request_id: activeClientIdRef.current }).catch(() => {});
     }
     setIsLoading(false);
     setProcessingNode(null);
