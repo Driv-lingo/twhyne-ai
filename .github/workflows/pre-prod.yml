@@ -29,7 +29,7 @@ jobs:
       run: |
         cd backend
         pip install --upgrade pip
-        pip install flask flask-cors pillow numpy
+        pip install flask flask-cors pillow numpy sympy pytest
         pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
     
     - name: Install and build frontend
@@ -41,7 +41,7 @@ jobs:
     - name: Run backend tests
       run: |
         cd backend
-        python -m pytest tests/ || echo "No tests found yet"
+        python -m pytest tests/ -v
     
     - name: Run integration tests
       run: |
