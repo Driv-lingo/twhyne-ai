@@ -124,6 +124,7 @@ function App() {
   const activeRequestRef = useRef(null);
   const abortRef = useRef(null);
   const activeClientIdRef = useRef(null);
+  const [progressText, setProgressText] = useState('');
   const [selectedNode, setSelectedNode] = useState(null);
   const [nodeStatus, setNodeStatus] = useState({});
   const [useRemote, setUseRemote] = useState(false);
@@ -196,6 +197,26 @@ function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showHelpOverlay]);
+
+  // Poll backend progress while a request is running, so the loading bubble
+  // says WHAT is happening ("retrieving documents", "generating - code")
+  // instead of showing a silent spinner during multi-minute generations.
+  useEffect(() => {
+    if (!isLoading) {
+      setProgressText('');
+      return;
+    }
+    const iv = setInterval(async () => {
+      try {
+        const r = await axios.get('http://127.0.0.1:5002/progress');
+        const { state, detail } = r.data || {};
+        if (state && state !== 'idle') {
+          setProgressText(detail ? `${state} — ${detail}` : state);
+        }
+      } catch (e) { /* keep last text if the poll fails */ }
+    }, 2000);
+    return () => clearInterval(iv);
+  }, [isLoading]);
 
   // Scroll to bottom of chat
   const scrollToBottom = () => {
@@ -834,7 +855,7 @@ function App() {
               )}
                 {isLoading && (
                   <div className="chat-bubble assistant loading">
-                    <span className="chat-meta">Twhyne {processingNode && `• ${processingNode} node`}</span>
+                    <span className="chat-meta">Twhyne {processingNode && `• ${processingNode} node`}{progressText && ` • ${progressText}`}</span>
                     <div className="typing-indicator">
                       <span></span>
                       <span></span>

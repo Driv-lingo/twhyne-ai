@@ -43,6 +43,19 @@ def _is_cancelled(client_rid):
     with _CANCELLED_LOCK:
         return client_rid in _CANCELLED
 
+
+# Coarse progress state so the UI can show WHAT the backend is doing
+# ("retrieving documents", "generating - code node") instead of a silent
+# spinner during multi-minute CPU generations. One query runs at a time
+# (inference lock), so a single global is sufficient.
+_PROGRESS = {'state': 'idle', 'detail': '', 'since': 0.0}
+
+
+def _set_progress(state, detail=''):
+    _PROGRESS['state'] = state
+    _PROGRESS['detail'] = detail
+    _PROGRESS['since'] = time.time()
+
 # Cosine-similarity score above which retrieved sources ground the answer.
 # BGE cosine scores have a high floor: unrelated query/passage pairs still
 # score ~0.53-0.58 (observed: "write a Python function" vs a giraffe manual
@@ -307,6 +320,7 @@ def create_app():
             if not prompt or not prompt.strip():
                 return jsonify({'error': 'No prompt provided'}), 400
             client_rid = str(data.get('client_request_id', '') or '').strip()
+            _set_progress('routing')
 
             from flux_nodes.base import Query
 
@@ -320,9 +334,11 @@ def create_app():
                     logger.info("Math shortcut: routing directly to SymPy")
                     q = Query(id=f"query_{int(time.time() * 1000)}", text=prompt,
                               parameters={}, history=[])
+                    _set_progress('queued', 'math')
                     with _INFER_LOCK:
                         if _is_cancelled(client_rid):
                             return jsonify({'cancelled': True}), 409
+                        _set_progress('computing', 'exact math (SymPy)')
                         response = math_node.process(q)
                     return jsonify({'result': response.text, 'response': response.text,
                                     'node_id': 'math-llm-eval', 'sources': [],
@@ -350,15 +366,18 @@ def create_app():
                         parameters['image_path'] = image_path
                     q = Query(id=f"query_{int(time.time() * 1000)}", text=prompt,
                               parameters=parameters, history=conversation_history)
+                    _set_progress('queued', specialist.node_id)
                     with _INFER_LOCK:
                         if _is_cancelled(client_rid):
                             return jsonify({'cancelled': True}), 409
+                        _set_progress('generating', specialist.node_id)
                         response = specialist.process(q)
                     return jsonify({'result': response.text, 'response': response.text,
                                     'node_id': specialist.node_id, 'sources': [],
                                     'grounded': False})
 
             # ---- RETRIEVAL-FIRST ROUTING ---------------------------------
+            _set_progress('retrieving documents')
             context, sources, top_score = _retrieve(prompt, dataset_id)
             should_ground = forced or (bool(context) and top_score >= GROUND_THRESHOLD)
 
@@ -387,9 +406,11 @@ def create_app():
                 # for follow-up questions.
                 q = Query(id=f"query_{int(time.time() * 1000)}", text=grounded,
                           parameters={}, history=[])
+                _set_progress('queued', 'grounded answer')
                 with _INFER_LOCK:
                     if _is_cancelled(client_rid):
                         return jsonify({'cancelled': True}), 409
+                    _set_progress('generating', 'grounded answer with citations')
                     response = lang.process(q)
                 text = response.text
                 if sources:
@@ -417,9 +438,11 @@ def create_app():
 
             query_obj = Query(id=f"query_{int(time.time() * 1000)}", text=prompt,
                               parameters=parameters, history=conversation_history)
+            _set_progress('queued', node.node_id)
             with _INFER_LOCK:
                 if _is_cancelled(client_rid):
                     return jsonify({'cancelled': True}), 409
+                _set_progress('generating', node.node_id)
                 response = node.process(query_obj)
             return jsonify({'result': response.text, 'response': response.text,
                             'node_id': node.node_id, 'sources': [], 'grounded': False,
@@ -427,6 +450,13 @@ def create_app():
         except Exception as e:
             logger.error(f"Query processing failed: {e}")
             return jsonify({'error': f'Query processing failed: {str(e)}'}), 500
+        finally:
+            _set_progress('idle')
+
+    @app.route('/progress', methods=['GET'])
+    def progress():
+        """What the backend is doing right now (for UI progress display)."""
+        return jsonify(dict(_PROGRESS))
 
     @app.route('/cancel', methods=['POST', 'OPTIONS'])
     def cancel_request():
@@ -500,4 +530,12 @@ if __name__ == '__main__':
     print("Starting Twhyne AI backend on :5002")
     print("=" * 60)
     app = create_app()
-    app.run(host='0.0.0.0', port=5002, debug=False)
+    try:
+        # Production WSGI server. A few threads keep /status, /progress and
+        # /cancel responsive while the inference lock serializes generation.
+        from waitress import serve
+        print("Serving with waitress (production WSGI)")
+        serve(app, host='0.0.0.0', port=5002, threads=6)
+    except ImportError:
+        print("waitress not installed; falling back to Flask dev server")
+        app.run(host='0.0.0.0', port=5002, debug=False)

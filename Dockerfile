@@ -21,11 +21,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl procps build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Base Python deps (SymPy included for exact math). cmake/ninja are build
-# tools for the engine compile below.
+# Base Python deps (SymPy included for exact math; waitress is the
+# production WSGI server). cmake/ninja are build tools for the engine
+# compile below.
 RUN pip install --no-cache-dir \
         flask==3.1.1 flask-cors==6.0.1 requests==2.32.4 \
-        "numpy<2" Pillow==10.4.0 sympy==1.13.3 \
+        "numpy<2" Pillow==10.4.0 sympy==1.13.3 waitress==3.0.2 \
         cmake ninja
 
 # Compile the inference engine for a PORTABLE x86-64 baseline. PyPI ships
