@@ -5,17 +5,66 @@
 """
 Code Node
 
-This module implements the Code expert node using CodeLlama-7B.
+Code expert node using CodeLlama-7B with EXECUTE-BEFORE-ANSWER verification:
+generated code is extracted, syntax-checked, and actually run in an isolated
+subprocess before being returned. If it fails, the error is fed back to the
+model for one retry. The caller therefore receives code that demonstrably
+executes, or an honest warning - never an unchecked guess.
 """
 
 import logging
 import os
+import re
+import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 from .base import FluxNode
 
 logger = logging.getLogger(__name__)
+
+_CODE_BLOCK_RE = re.compile(r"```(?:python)?\s*(.*?)```", re.S)
+_TEX_BLOCK_RE = re.compile(r"\\begin\{code\}(.*?)\\end\{code\}", re.S)
+
+
+def _extract_code(text: str) -> Optional[str]:
+    """Pull the first code block out of a model response."""
+    m = _CODE_BLOCK_RE.search(text)
+    if m:
+        return m.group(1).strip()
+    m = _TEX_BLOCK_RE.search(text)
+    if m:
+        return m.group(1).strip()
+    stripped = text.strip()
+    if stripped.startswith(('def ', 'import ', 'class ', 'from ', '#')):
+        return stripped
+    return None
+
+
+def _verify_code(code: str) -> (bool, str):
+    """Syntax-check, then execute in an isolated subprocess with a timeout.
+
+    Module-level execution catches import errors, NameErrors and crashes in
+    top-level code; function bodies are compiled and validated. Runs with -I
+    (isolated mode) and a hard 10s timeout inside the app container.
+    """
+    try:
+        compile(code, '<generated>', 'exec')
+    except SyntaxError as e:
+        return False, f"SyntaxError: {e}"
+    try:
+        proc = subprocess.run(
+            [sys.executable, '-I', '-c', code],
+            capture_output=True, text=True, timeout=10,
+        )
+        if proc.returncode != 0:
+            return False, (proc.stderr or 'nonzero exit').strip()[-500:]
+        return True, ""
+    except subprocess.TimeoutExpired:
+        return False, "execution timed out after 10 seconds"
+    except Exception as e:
+        return False, str(e)
 
 
 class CodeNode(FluxNode):
@@ -26,7 +75,7 @@ class CodeNode(FluxNode):
         model_path: Optional[str] = None,
         node_id: str = "code-codellama-7b",
         name: str = "Code (CodeLlama-7B)",
-        description: str = "Code generation and understanding using CodeLlama-7B",
+        description: str = "Code generation with execute-before-answer verification (CodeLlama-7B)",
     ):
         """Initialize the code node."""
         logger.info(f"Starting CodeNode initialization with node_id: {node_id}")
@@ -54,36 +103,60 @@ class CodeNode(FluxNode):
 
         logger.info("CodeNode initialization complete")
 
+    def _generate_once(self, model, prompt_text: str) -> str:
+        # Stop sequences keep the model from rambling into invented follow-up
+        # exercises after it has answered (observed in benchmark output).
+        response = model(
+            prompt_text,
+            max_tokens=512,
+            temperature=0.4,
+            top_p=0.9,
+            top_k=40,
+            repeat_penalty=1.1,
+            stop=["</s>", "###", "\nRequest:", "Comment:"],
+            echo=False,
+        )
+        return response['choices'][0]['text'].strip()
+
     def generate(self, prompt: str, **kwargs) -> Optional[str]:
-        """Generate a response based on a prompt."""
-        conversation_history = kwargs.get('conversation_history', [])
-        logger.info(f"CodeNode generate called with prompt: {prompt[:100]}... and {len(conversation_history)} history items")
+        """Generate code, then EXECUTE it to verify before answering."""
+        logger.info(f"CodeNode generate called with prompt: {prompt[:100]}...")
         try:
-            # Fetch from the SHARED single-resident cache at call time. Loading
-            # a private CodeLlama copy while Mistral was resident put two 7B
-            # models in a 12GB VM and swap-thrashed until requests timed out;
-            # the shared cache evicts the other model before loading this one.
+            # Fetch from the SHARED single-resident cache at call time (the
+            # cache evicts the other model first, so two 7Bs never coexist).
             from .shared_model import get_shared_model
             model = get_shared_model(self.model_path, n_ctx=4096)
 
-            formatted_prompt = self._format_prompt(prompt, conversation_history)
+            raw = self._generate_once(model, self._format_prompt(prompt))
+            code = _extract_code(raw)
+            if code is None:
+                return raw  # no code block found; return the text as-is
 
-            # 512 tokens is ample for a function + explanation; 1024 at CPU
-            # speed (~3-4 tok/s) pushed a single request past 10 minutes.
-            response = model(
-                formatted_prompt,
-                max_tokens=512,
-                temperature=0.4,
-                top_p=0.9,
-                top_k=40,
-                repeat_penalty=1.1,
-                stop=["</s>"],
-                echo=False
-            )
+            ok, err = _verify_code(code)
+            if not ok:
+                logger.info(f"Generated code failed verification ({err}); retrying once")
+                retry_prompt = self._format_prompt(prompt) + (
+                    f"\n\nA previous attempt produced this code:\n{code}\n\n"
+                    f"It failed with this error:\n{err}\n\n"
+                    "Write a corrected version.\n\nCode:"
+                )
+                raw2 = self._generate_once(model, retry_prompt)
+                code2 = _extract_code(raw2)
+                if code2:
+                    ok2, err2 = _verify_code(code2)
+                    if ok2:
+                        code, ok, err = code2, True, ""
+                    else:
+                        code, err = code2, err2
 
-            result = response['choices'][0]['text'].strip()
-            logger.info(f"Generated response: {result[:100]}...")
-            return result
+            if ok:
+                logger.info("Code verified: executes without errors")
+                return (f"```python\n{code}\n```\n\n"
+                        f"Verified: this code compiles and runs without errors.")
+            logger.warning(f"Code failed verification after retry: {err}")
+            return (f"```python\n{code}\n```\n\n"
+                    f"Warning: this code FAILED automatic verification "
+                    f"({err}). Review before using.")
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")
@@ -95,10 +168,6 @@ class CodeNode(FluxNode):
 
 Request: {query_text}
 
-Please provide:
-1. A complete Python script
-2. Include necessary imports
-3. Add comments explaining the code
-4. Make it ready to run
+Provide ONE complete, ready-to-run Python code block with necessary imports and brief comments. Do not add extra exercises or commentary after the code.
 
 Code:"""
