@@ -28,6 +28,21 @@ logger = logging.getLogger(__name__)
 # queue up instead of crashing the server.
 _INFER_LOCK = threading.Lock()
 
+# Cancelled client request ids. /query re-checks this after acquiring the
+# inference lock, so a job cancelled while QUEUED is skipped instead of
+# burning minutes computing an answer nobody will see. (A generation already
+# in progress cannot be interrupted mid-token; it finishes and the client
+# discards it.)
+_CANCELLED = set()
+_CANCELLED_LOCK = threading.Lock()
+
+
+def _is_cancelled(client_rid):
+    if not client_rid:
+        return False
+    with _CANCELLED_LOCK:
+        return client_rid in _CANCELLED
+
 # Cosine-similarity score above which retrieved sources ground the answer.
 # BGE cosine scores have a high floor: unrelated query/passage pairs still
 # score ~0.53-0.58 (observed: "write a Python function" vs a giraffe manual
@@ -291,6 +306,7 @@ def create_app():
                 conversation_history = conversation_history[-5:]
             if not prompt or not prompt.strip():
                 return jsonify({'error': 'No prompt provided'}), 400
+            client_rid = str(data.get('client_request_id', '') or '').strip()
 
             from flux_nodes.base import Query
 
@@ -305,6 +321,8 @@ def create_app():
                     q = Query(id=f"query_{int(time.time() * 1000)}", text=prompt,
                               parameters={}, history=[])
                     with _INFER_LOCK:
+                        if _is_cancelled(client_rid):
+                            return jsonify({'cancelled': True}), 409
                         response = math_node.process(q)
                     return jsonify({'result': response.text, 'response': response.text,
                                     'node_id': 'math-llm-eval', 'sources': [],
@@ -333,6 +351,8 @@ def create_app():
                     q = Query(id=f"query_{int(time.time() * 1000)}", text=prompt,
                               parameters=parameters, history=conversation_history)
                     with _INFER_LOCK:
+                        if _is_cancelled(client_rid):
+                            return jsonify({'cancelled': True}), 409
                         response = specialist.process(q)
                     return jsonify({'result': response.text, 'response': response.text,
                                     'node_id': specialist.node_id, 'sources': [],
@@ -368,6 +388,8 @@ def create_app():
                 q = Query(id=f"query_{int(time.time() * 1000)}", text=grounded,
                           parameters={}, history=[])
                 with _INFER_LOCK:
+                    if _is_cancelled(client_rid):
+                        return jsonify({'cancelled': True}), 409
                     response = lang.process(q)
                 text = response.text
                 if sources:
@@ -396,6 +418,8 @@ def create_app():
             query_obj = Query(id=f"query_{int(time.time() * 1000)}", text=prompt,
                               parameters=parameters, history=conversation_history)
             with _INFER_LOCK:
+                if _is_cancelled(client_rid):
+                    return jsonify({'cancelled': True}), 409
                 response = node.process(query_obj)
             return jsonify({'result': response.text, 'response': response.text,
                             'node_id': node.node_id, 'sources': [], 'grounded': False,
@@ -403,6 +427,24 @@ def create_app():
         except Exception as e:
             logger.error(f"Query processing failed: {e}")
             return jsonify({'error': f'Query processing failed: {str(e)}'}), 500
+
+    @app.route('/cancel', methods=['POST', 'OPTIONS'])
+    def cancel_request():
+        """Mark a client request id cancelled: if its job is still queued
+        behind the inference lock it will be skipped, not computed."""
+        if request.method == 'OPTIONS':
+            return '', 200
+        data = request.get_json() or {}
+        rid = str(data.get('client_request_id', '') or '').strip()
+        if not rid:
+            return jsonify({'error': 'client_request_id required'}), 400
+        with _CANCELLED_LOCK:
+            _CANCELLED.add(rid)
+            if len(_CANCELLED) > 1000:  # bounded memory
+                _CANCELLED.clear()
+                _CANCELLED.add(rid)
+        logger.info(f"Request cancelled: {rid}")
+        return jsonify({'cancelled': rid})
 
     @app.route('/api/rag/status', methods=['GET'])
     def rag_status():

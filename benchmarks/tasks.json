@@ -4,7 +4,8 @@
     {"id": "m2", "prompt": "What is 12 * 244688?", "expect_number": "2936256"},
     {"id": "m3", "prompt": "Compute 987654 + 123456.", "expect_number": "1111110"},
     {"id": "m4", "prompt": "What is 144 divided by 12?", "expect_number": "12"},
-    {"id": "m5", "prompt": "Solve for x: 3*x + 6 = 21", "expect_number": "5"}
+    {"id": "m5", "prompt": "Solve for x: 3*x + 6 = 21", "expect_number": "5"},
+    {"id": "m6", "prompt": "what is 47 × 8,912?", "expect_number": "418864"}
   ],
   "grounded_qa": [
     {"id": "g1",

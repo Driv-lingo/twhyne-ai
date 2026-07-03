@@ -160,6 +160,31 @@ def ask_cloud(provider, prompt):
     return None
 
 
+# ---- scripted scenarios ------------------------------------------------------
+
+def run_cancellation_scenario(base):
+    """Regression for the live-test failure: abandon a slow request, cancel
+    it, then verify the NEXT question gets ITS OWN correct answer (no stale
+    output, queued cancelled job skipped)."""
+    rid = f"bench-cancel-{int(time.time() * 1000)}"
+    try:
+        _post(base + "/query", {"prompt": "Explain the history of computing in detail.",
+                                "client_request_id": rid}, timeout=1)
+    except Exception:
+        pass  # abandoned on purpose, like a user hitting Cancel
+    try:
+        _post(base + "/cancel", {"client_request_id": rid}, timeout=15)
+    except Exception as e:
+        return False, f"/cancel endpoint failed: {e}"
+    try:
+        answer, _ = ask_twhyne(base, "what is 47 × 8,912?")
+    except Exception as e:
+        return False, f"follow-up query failed: {e}"
+    if "418864" in answer.replace(",", ""):
+        return True, "exact answer after cancel"
+    return False, f"wrong/stale answer: {answer[:120]}"
+
+
 # ---- main ------------------------------------------------------------------
 
 def main():
@@ -177,7 +202,7 @@ def main():
               f"Start the Twhyne app first, then re-run.")
         sys.exit(1)
 
-    tasks = json.loads(TASKS_FILE.read_text())
+    tasks = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
     dataset_id = None
     if any(t.get("use_rag") for cat in tasks.values() for t in cat):
         print("Preparing benchmark RAG corpus...")
@@ -226,6 +251,19 @@ def main():
                             "prompt": task["prompt"], "local_pass": local_ok,
                             "cloud_pass": cloud_ok, "reason": reason,
                             "elapsed_s": elapsed, "answer": answer, "sources": sources})
+
+    # Scripted scenario: cancellation must not poison the next answer.
+    t0 = time.time()
+    ok, reason = run_cancellation_scenario(base)
+    st = cat_stats.setdefault("scenarios", {"pass": 0, "total": 0,
+                                            "cloud_pass": 0, "cloud_total": 0})
+    st["total"] += 1
+    st["pass"] += int(ok)
+    print(f"[{'PASS' if ok else 'FAIL'}] scenarios/cancel_stale ({round(time.time()-t0,1)}s)  {reason}")
+    results.append({"category": "scenarios", "id": "cancel_stale",
+                    "prompt": "(cancel mid-flight, then unrelated question)",
+                    "local_pass": ok, "cloud_pass": None, "reason": reason,
+                    "elapsed_s": round(time.time()-t0, 1), "answer": "", "sources": []})
 
     print("\n" + "=" * 60)
     print(" SUMMARY")

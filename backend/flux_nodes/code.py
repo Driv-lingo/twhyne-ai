@@ -46,8 +46,9 @@ def _verify_code(code: str) -> (bool, str):
     """Syntax-check, then execute in an isolated subprocess with a timeout.
 
     Module-level execution catches import errors, NameErrors and crashes in
-    top-level code; function bodies are compiled and validated. Runs with -I
-    (isolated mode) and a hard 10s timeout inside the app container.
+    top-level code, and RUNS any module-level assert self-tests; function
+    bodies are compiled and validated. Runs with -I (isolated mode) and a
+    hard 10s timeout inside the app container.
     """
     try:
         compile(code, '<generated>', 'exec')
@@ -151,9 +152,18 @@ class CodeNode(FluxNode):
                         code, err = code2, err2
 
             if ok:
-                logger.info("Code verified: executes without errors")
-                return (f"```python\n{code}\n```\n\n"
-                        f"Verified: this code compiles and runs without errors.")
+                # Honest labels: passing self-generated asserts is stronger
+                # evidence than merely executing, and the label says which.
+                if 'assert' in code:
+                    logger.info("Code verified: ran and passed its self-tests")
+                    label = ("Verified: the code was executed and passed its "
+                             "self-generated assert tests.")
+                else:
+                    logger.info("Code verified: executes without errors (no self-tests)")
+                    label = ("Verified: this code compiles and runs without "
+                             "errors (no self-tests were generated - review "
+                             "the logic before relying on it).")
+                return f"```python\n{code}\n```\n\n{label}"
             logger.warning(f"Code failed verification after retry: {err}")
             return (f"```python\n{code}\n```\n\n"
                     f"Warning: this code FAILED automatic verification "
@@ -176,6 +186,6 @@ class CodeNode(FluxNode):
 
 {ctx}Request: {query_text}
 
-Provide ONE complete, ready-to-run Python code block with necessary imports and brief comments. Do not add extra exercises or commentary after the code.
+Provide ONE complete, ready-to-run Python code block containing: the function with necessary imports and brief comments, followed by 3 module-level assert statements that test a typical case, an empty/edge case, and the expected behavior. Do not add extra exercises or commentary after the code.
 
 Code:"""
