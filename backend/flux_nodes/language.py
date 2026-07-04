@@ -73,5 +73,11 @@ class LanguageNode(FluxNode):
                 context_parts.append(f"Assistant: {msg.get('content', '')}")
         if context_parts:
             context = "\n".join(context_parts)
-            return f"[INST] Previous conversation:\n{context}\n\nCurrent question: {query_text} [/INST]"
+            # The reference-only framing matters: without it a 7B model
+            # re-answers or riffs on earlier turns instead of the actual
+            # question (seen in live testing).
+            return (f"[INST] Previous conversation (for reference only):\n{context}\n\n"
+                    f"Answer ONLY the following current question. Do not revisit or "
+                    f"re-answer earlier questions unless the current question "
+                    f"explicitly refers to them.\n\nCurrent question: {query_text} [/INST]")
         return f"[INST] {query_text} [/INST]"
