@@ -96,7 +96,9 @@ echo "(First response may take up to a minute while the model loads.)"
 echo "Press Ctrl+C to stop."
 echo "============================================================"
 
-docker run --name twhyne-ai --rm \
+# No --rm: keep the stopped container so `docker logs twhyne-ai`
+# survives a crash for diagnosis (removed on next launch above).
+docker run --name twhyne-ai \
   -e SNF_LICENSE_KEY="$SNF_LICENSE_KEY" \
   -e LICENSE_API_URL=https://twhyne.com \
   -e SNF_LICENSE_API=https://twhyne.com \
