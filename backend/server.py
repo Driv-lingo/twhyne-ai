@@ -112,10 +112,13 @@ def _route_query(prompt: str, node_registry) -> Optional[Any]:
     scores = {'math-llm-eval': 0, 'code-codellama-7b': 0, 'planner-mistral-7b': 0,
               'vision-llava-1.6-7b': 0, 'language-mistral-7b': 0}
 
-    for ind in ['+', '-', '*', '/', '=', 'calculate', 'compute', 'solve', 'math', 'equation',
-                'add', 'subtract', 'multiply', 'divide', 'sum', 'product', 'square', 'root',
-                'derivative', 'integral', 'integrate', 'differentiate']:
-        if ind in p:
+    # Operator symbols count ONLY between digits ("3+4"). Bare substring
+    # matching once routed "tackle/create tech" to the math node on the '/'.
+    if _looks_like_math(p):
+        scores['math-llm-eval'] += 4
+    for kw in ['calculate', 'compute', 'solve', 'math', 'equation',
+               'derivative', 'integral', 'integrate', 'differentiate']:
+        if kw in p:
             scores['math-llm-eval'] += 2
     for kw in ['code', 'function', 'class', 'method', 'algorithm', 'programming', 'script',
                'debug', 'syntax', 'variable', 'loop', 'python', 'javascript']:
@@ -279,11 +282,20 @@ def create_app():
         """
         rm = get_rag_manager()
         datasets = rm.list_datasets()
-        if not dataset_id and datasets:
-            dataset_id = datasets[0]['id']
-        if not dataset_id:
+        # Search ALL datasets when none is specified and keep the best
+        # evidence overall - with several knowledge bases loaded, searching
+        # only the first one grounded questions against the wrong documents.
+        ids = [dataset_id] if dataset_id else [d['id'] for d in datasets]
+        if not ids:
             return "", [], 0.0
-        results = rm.search_dataset(dataset_id, prompt, top_k=8)
+        results = []
+        for did in ids:
+            try:
+                results.extend(rm.search_dataset(did, prompt, top_k=8))
+            except Exception as e:
+                logger.error(f"search failed for dataset {did}: {e}")
+        results.sort(key=lambda r: r.get('score', 0), reverse=True)
+        results = results[:8]
         if not results:
             return "", [], 0.0
         top_score = results[0]['score']
