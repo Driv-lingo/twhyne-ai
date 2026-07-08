@@ -223,7 +223,13 @@ def main():
                                              dataset_id, task.get("use_rag", False))
             except Exception as e:
                 answer, sources = f"[error: {e}]", []
-            local_ok, reason = scorer(task, answer, sources)
+            if answer.startswith("[error:"):
+                # A runtime error is ALWAYS a failure - never let expected
+                # strings coincidentally matched inside an error message count
+                # as a pass (a WinError code once satisfied a "100" check).
+                local_ok, reason = False, "runtime error (auto-fail)"
+            else:
+                local_ok, reason = scorer(task, answer, sources)
             elapsed = round(time.time() - t0, 1)
 
             cloud_ok = None
