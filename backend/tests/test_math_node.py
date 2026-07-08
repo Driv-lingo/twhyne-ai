@@ -32,6 +32,11 @@ def _node():
     ("what is 47 × 8,912?", "418864"),
     ("6 ÷ 2", "3"),
     ("1,000 + 2,500", "3500"),
+    # Exhaustive-benchmark regression: the '*' word-operator replacement
+    # left a literal backslash and broke every times/multiplied-by query.
+    ("58 times 73", "4234"),
+    ("6 multiplied by 7", "42"),
+    ("What is 0.5 * 8?", "4"),
 ])
 def test_exact_arithmetic(prompt, expected):
     out = _node()._try_sympy(prompt)
@@ -55,6 +60,7 @@ def test_filler_words_do_not_become_symbols():
 def test_extraction_helpers():
     assert _extract_expression(_normalize("What is 23 * 244866?")) == "23 * 244866"
     assert _extract_expression(_normalize("What is 144 divided by 12?")) == "144 / 12"
+    assert _extract_expression(_normalize("58 times 73")) == "58 * 73"
     assert _extract_expression(_normalize("tell me a story")) is None
 
 

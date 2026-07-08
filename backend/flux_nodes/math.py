@@ -59,7 +59,10 @@ def _normalize(query: str) -> str:
     s = re.sub(r'(?<=\d),(?=\d)', '', s)
     sl = ' ' + s + ' '
     for w, o in _WORD_OPS:
-        sl = re.sub(r'\s' + w + r'\s', ' ' + o.replace('*', r'\*') + ' ', sl, flags=re.I)
+        # Replacement via lambda: '*' must be inserted literally. Escaping it
+        # in a replacement STRING leaves a literal backslash behind ('58 \\* 73'),
+        # which broke every 'times'/'multiplied by' query.
+        sl = re.sub(r'\s' + w + r'\s', lambda _m, _o=o: f' {_o} ', sl, flags=re.I)
     return sl.strip()
 
 
@@ -145,6 +148,8 @@ class MathNode(FluxNode):
                 # numeric result: show exact, and a decimal if not an integer
                 if isinstance(val, Integer):
                     return str(val)
+                if isinstance(val, Float) and val == int(val):
+                    return str(int(val))  # 0.5*8 -> "4", not "4.00000000000000"
                 approx = N(val, 12)
                 return f"{val}  (≈ {approx})" if str(val) != str(approx) else str(approx)
             return str(val)
