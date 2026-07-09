@@ -53,7 +53,10 @@ class LanguageNode(FluxNode):
             formatted_prompt = self._format_prompt(prompt, conversation_history)
             response = model(
                 formatted_prompt,
-                max_tokens=512, temperature=0.5, top_p=0.8, top_k=20,
+                # 320-token cap: on CPU-only hosts generation runs ~1 tok/s
+                # under load, so 512 tokens meant multi-minute worst cases
+                # (benchmark saw 600s timeouts on trivial questions).
+                max_tokens=320, temperature=0.5, top_p=0.8, top_k=20,
                 repeat_penalty=1.0, stop=["</s>"], echo=False,
             )
             return response['choices'][0]['text'].strip()

@@ -114,21 +114,27 @@ def _route_query(prompt: str, node_registry) -> Optional[Any]:
 
     # Operator symbols count ONLY between digits ("3+4"). Bare substring
     # matching once routed "tackle/create tech" to the math node on the '/'.
+    # Keywords match on WORD BOUNDARIES only: substring matching routed
+    # "largest planet" to the planner ('plan') and the Bloops syllogism to
+    # the code node ('loop' inside "bloops").
+    def _has_kw(kw):
+        return re.search(r'\b' + re.escape(kw) + r'\b', p) is not None
+
     if _looks_like_math(p):
         scores['math-llm-eval'] += 4
     for kw in ['calculate', 'compute', 'solve', 'math', 'equation',
                'derivative', 'integral', 'integrate', 'differentiate']:
-        if kw in p:
+        if _has_kw(kw):
             scores['math-llm-eval'] += 2
     for kw in ['code', 'function', 'class', 'method', 'algorithm', 'programming', 'script',
                'debug', 'syntax', 'variable', 'loop', 'python', 'javascript']:
-        if kw in p:
+        if _has_kw(kw):
             scores['code-codellama-7b'] += 1
     for kw in ['plan', 'schedule', 'organize', 'workflow', 'itinerary', 'trip', 'project', 'timeline', 'roadmap']:
-        if kw in p:
+        if _has_kw(kw):
             scores['planner-mistral-7b'] += 1
     for kw in ['image', 'picture', 'photo', 'visual', 'diagram', 'screenshot']:
-        if kw in p:
+        if _has_kw(kw):
             scores['vision-llava-1.6-7b'] += 1
 
     # Registry-loaded custom nodes compete via their declared keywords.
@@ -136,7 +142,7 @@ def _route_query(prompt: str, node_registry) -> Optional[Any]:
         if node.node_id in scores:
             continue
         kws = getattr(node, 'keywords', None) or []
-        s = sum(2 for kw in kws if kw in p)
+        s = sum(2 for kw in kws if _has_kw(kw))
         if s:
             scores[node.node_id] = s
 

@@ -42,13 +42,31 @@ def _extract_code(text: str) -> Optional[str]:
     return None
 
 
+def _trim_to_compilable(code: str) -> str:
+    """Drop trailing lines until the block compiles.
+
+    The model sometimes echoes retry-prompt narrative ("It failed with this
+    error:", tracebacks, a second copy of the request) after real code inside
+    the same block; that text is not Python and poisons verification.
+    Progressively trimming from the end recovers the leading valid program.
+    """
+    lines = code.rstrip().split('\n')
+    while lines:
+        candidate = '\n'.join(lines).rstrip()
+        try:
+            compile(candidate, '<generated>', 'exec')
+            return candidate
+        except SyntaxError:
+            lines.pop()
+    return code
+
+
 def _verify_code(code: str) -> (bool, str):
     """Syntax-check, then execute in an isolated subprocess with a timeout.
 
     Module-level execution catches import errors, NameErrors and crashes in
-    top-level code, and RUNS any module-level assert self-tests; function
-    bodies are compiled and validated. Runs with -I (isolated mode) and a
-    hard 10s timeout inside the app container.
+    top-level code; function bodies are compiled and validated. Runs with -I
+    (isolated mode) and a hard 10s timeout inside the app container.
     """
     try:
         compile(code, '<generated>', 'exec')
@@ -114,7 +132,9 @@ class CodeNode(FluxNode):
             top_p=0.9,
             top_k=40,
             repeat_penalty=1.1,
-            stop=["</s>", "###", "\nRequest:", "Comment:"],
+            stop=["</s>", "###", "\nRequest:", "Comment:",
+                  "\nIt failed with", "\nIt passed with",
+                  "You are a helpful coding assistant"],
             echo=False,
         )
         return response['choices'][0]['text'].strip()
@@ -133,6 +153,7 @@ class CodeNode(FluxNode):
             code = _extract_code(raw)
             if code is None:
                 return raw  # no code block found; return the text as-is
+            code = _trim_to_compilable(code)
 
             ok, err = _verify_code(code)
             if not ok:
@@ -145,6 +166,7 @@ class CodeNode(FluxNode):
                 raw2 = self._generate_once(model, retry_prompt)
                 code2 = _extract_code(raw2)
                 if code2:
+                    code2 = _trim_to_compilable(code2)
                     ok2, err2 = _verify_code(code2)
                     if ok2:
                         code, ok, err = code2, True, ""
@@ -160,9 +182,10 @@ class CodeNode(FluxNode):
                              "self-generated assert tests.")
                 else:
                     logger.info("Code verified: executes without errors (no self-tests)")
-                    label = ("Verified: this code compiles and runs without "
-                             "errors (no self-tests were generated - review "
-                             "the logic before relying on it).")
+                    label = ("Executed only - NOT behavior-verified: the code "
+                             "compiles and runs without errors, but no tests "
+                             "checked its outputs. Review the logic before "
+                             "relying on it.")
                 return f"```python\n{code}\n```\n\n{label}"
             logger.warning(f"Code failed verification after retry: {err}")
             return (f"```python\n{code}\n```\n\n"
