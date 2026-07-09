@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.request
@@ -83,10 +84,52 @@ def score_contains(task, answer, sources):
     return ok, "; ".join(reasons) or "all checks passed"
 
 
+_CODE_BLOCK_RE = re.compile(r"```(?:python)?\s*(.*?)```", re.S)
+
+
+def score_code(task, answer, sources):
+    """Code tasks must pass EXTERNAL unit tests, not just self-generated ones.
+
+    The extracted code block is executed in an isolated subprocess with the
+    task's `unit_tests` asserts appended. Self-tests once let a logically
+    wrong FizzBuzz (15 -> 'Fizz') and TODO stubs count as passes.
+    """
+    ok, reasons = score_contains(task, answer, sources)
+    m = _CODE_BLOCK_RE.search(answer)
+    if not m:
+        return False, "no code block in answer"
+    code = m.group(1).strip()
+    tests = task.get("unit_tests", [])
+    if tests:
+        program = code + "\n\n" + "\n".join(tests) + "\n"
+        try:
+            proc = subprocess.run([sys.executable, "-I", "-c", program],
+                                  capture_output=True, text=True, timeout=15)
+            if proc.returncode != 0:
+                err = (proc.stderr or "nonzero exit").strip().splitlines()[-1][:200]
+                return False, f"external unit tests FAILED: {err}"
+        except subprocess.TimeoutExpired:
+            return False, "external unit tests timed out"
+    if not ok:
+        return False, reasons
+    return True, "external unit tests passed" if tests else "all checks passed"
+
+
+# Any of these in a final answer is slop by definition: error text, failed
+# verification, tracebacks, or unfinished TODO stubs must never pass.
+_SLOP_MARKERS = ["failed automatic verification", "syntaxerror",
+                 "traceback (most recent call last)", "# todo", "[error:"]
+
+# Grading time limits (seconds) per category. Accuracy after 10 minutes is
+# still a UX failure; the previous 600s harness timeout was the only bound.
+_TIME_LIMITS = {"math": 10, "general": 180, "reasoning": 180,
+                "code": 420, "grounded_qa": 300}
+
+
 SCORERS = {
     "math": score_math,
     "grounded_qa": score_grounded,
-    "code": score_contains,
+    "code": score_code,
     "general": score_contains,
     "reasoning": score_contains,
 }
@@ -126,7 +169,7 @@ def ask_twhyne(base_url, prompt, dataset_id=None, use_rag=False):
         payload["use_rag"] = True
     resp = _post(base_url + "/query", payload)
     text = resp.get("response") or resp.get("result") or ""
-    return text, resp.get("sources", [])
+    return text, resp.get("sources", []), resp.get("node_id", "")
 
 
 # ---- optional cloud comparison ---------------------------------------------
@@ -180,7 +223,7 @@ def run_cancellation_scenario(base):
     except Exception as e:
         return False, f"/cancel endpoint failed: {e}"
     try:
-        answer, _ = ask_twhyne(base, "what is 47 × 8,912?")
+        answer, _, _ = ask_twhyne(base, "what is 47 × 8,912?")
     except Exception as e:
         return False, f"follow-up query failed: {e}"
     if "418864" in answer.replace(",", ""):
@@ -205,7 +248,7 @@ def main():
               f"Start the Twhyne app first, then re-run.")
         sys.exit(1)
 
-    tasks = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
+    tasks = json.loads(TASKS_FILE.read_text())
     dataset_id = None
     if any(t.get("use_rag") for cat in tasks.values() for t in cat):
         print("Preparing benchmark RAG corpus...")
@@ -219,18 +262,30 @@ def main():
         for task in items:
             t0 = time.time()
             try:
-                answer, sources = ask_twhyne(base, task["prompt"],
-                                             dataset_id, task.get("use_rag", False))
+                answer, sources, node_id = ask_twhyne(base, task["prompt"],
+                                                      dataset_id, task.get("use_rag", False))
             except Exception as e:
-                answer, sources = f"[error: {e}]", []
+                answer, sources, node_id = f"[error: {e}]", [], ""
+            elapsed = round(time.time() - t0, 1)
+            low = answer.lower()
+            slop = next((m for m in _SLOP_MARKERS if m in low), None)
+            limit = task.get("time_limit_s", _TIME_LIMITS.get(category))
             if answer.startswith("[error:"):
                 # A runtime error is ALWAYS a failure - never let expected
                 # strings coincidentally matched inside an error message count
                 # as a pass (a WinError code once satisfied a "100" check).
                 local_ok, reason = False, "runtime error (auto-fail)"
+            elif slop:
+                # Slop markers auto-fail: failed verification, tracebacks and
+                # TODO stubs in a final answer are never acceptable output.
+                local_ok, reason = False, f"slop marker in answer: '{slop}' (auto-fail)"
             else:
                 local_ok, reason = scorer(task, answer, sources)
-            elapsed = round(time.time() - t0, 1)
+                if local_ok and limit and elapsed > limit:
+                    local_ok, reason = False, f"correct but too slow ({elapsed}s > {limit}s limit)"
+                want_node = task.get("expect_node")
+                if local_ok and want_node and node_id != want_node:
+                    local_ok, reason = False, f"misrouted: answered by '{node_id}', expected '{want_node}'"
 
             cloud_ok = None
             if args.cloud:
@@ -259,7 +314,8 @@ def main():
             results.append({"category": category, "id": task["id"],
                             "prompt": task["prompt"], "local_pass": local_ok,
                             "cloud_pass": cloud_ok, "reason": reason,
-                            "elapsed_s": elapsed, "answer": answer, "sources": sources})
+                            "elapsed_s": elapsed, "node_id": node_id,
+                            "answer": answer, "sources": sources})
 
     # Scripted scenario: cancellation must not poison the next answer.
     t0 = time.time()
