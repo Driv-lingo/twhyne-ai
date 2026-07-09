@@ -37,8 +37,12 @@ def _get_embed_model():
         with _embed_lock:
             if _embed_model is None:
                 logger.info(f"Loading embedding model: {_EMBED_MODEL_FILE}")
+                # n_ctx=1024: document chunks are 350 WORDS (~500+ tokens),
+                # which overflowed the previous 512-token window and made
+                # embedding fail for large chunks - permanently, see
+                # _ensure_embeddings.
                 _embed_model = Llama(model_path=str(_EMBED_MODEL_FILE), embedding=True,
-                                     n_ctx=512, verbose=False)
+                                     n_ctx=1024, verbose=False)
                 logger.info("Embedding model loaded (semantic retrieval enabled)")
     return _embed_model
 
@@ -84,6 +88,11 @@ class SemanticRAGManager:
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.datasets_file = self.storage_dir / "datasets.json"
         self.datasets = self._load_datasets()
+        # Datasets whose embedding backfill already ran this process. Without
+        # this, chunks that keep failing to embed were re-attempted on EVERY
+        # search - re-embedding thousands of chunks and rewriting the whole
+        # datasets.json per query (observed as 600s "general chat" queries).
+        self._backfilled = set()
         logger.info(f"RAG Manager initialized at {self.storage_dir}")
 
     def _load_datasets(self) -> Dict[str, Any]:
@@ -145,18 +154,29 @@ class SemanticRAGManager:
         return False
 
     def _ensure_embeddings(self, dataset_id: str):
-        """Backfill embeddings for datasets created before semantic search."""
-        if _get_embed_model() is None:
+        """Backfill embeddings for datasets created before semantic search.
+
+        Runs AT MOST ONCE per dataset per process: chunks that still fail to
+        embed are left for keyword scoring rather than retried on every
+        search (the retry loop made every multi-dataset query take minutes).
+        """
+        if _get_embed_model() is None or dataset_id in self._backfilled:
             return
+        self._backfilled.add(dataset_id)
         docs = self.datasets[dataset_id].get("documents", [])
         missing = [d for d in docs if not d.get("embedding")]
         if not missing:
             return
         logger.info(f"Backfilling embeddings for {len(missing)} chunks (one-time)...")
+        fixed = 0
         for d in missing:
-            d["embedding"] = _embed(d["content"])
-        self._save_datasets()
-        logger.info("Embedding backfill complete.")
+            emb = _embed(d["content"])
+            if emb:
+                d["embedding"] = emb
+                fixed += 1
+        if fixed:
+            self._save_datasets()
+        logger.info(f"Embedding backfill complete ({fixed}/{len(missing)} chunks embedded).")
 
     def search_dataset(self, dataset_id: str, query: str, top_k: int = 4) -> List[Dict[str, Any]]:
         if dataset_id not in self.datasets:

@@ -107,6 +107,47 @@ def _looks_like_math(prompt: str) -> bool:
     return any(k in p for k in kws) and any(c.isdigit() or c.isalpha() for c in p)
 
 
+# Question shapes eligible for the extractive fast path: short, direct
+# fact lookups. Summaries, comparisons and open questions still get the LLM.
+_FACTOID_RE = re.compile(
+    r'^\s*(what|when|who|whom|which|where|how\s+(many|much|long|large|big|often)|'
+    r'at\s+what|on\s+which|within|by\s+when|does|do|did|is|are|can|must)\b', re.I)
+
+_STOP_LITE = {"the", "a", "an", "is", "are", "was", "were", "to", "of", "in", "on",
+              "at", "by", "for", "with", "and", "or", "what", "which", "who", "how",
+              "when", "where", "does", "do", "did", "must", "can", "be", "according"}
+
+
+def _extractive_answer(prompt, kept, top_score):
+    """Answer a direct fact question with the EXACT source sentence - no LLM.
+
+    This is the strongest form of grounding (a literal quoted span) and it is
+    sub-second, versus 15-150s for a 7B generation. Only fires when retrieval
+    confidence is high and the question is a short factoid; anything needing
+    synthesis falls through to the model. Returns (text, source) or None.
+    """
+    if top_score < 0.70 or len(prompt) > 140 or not _FACTOID_RE.match(prompt):
+        return None
+    qwords = {w.strip('?.,!').lower() for w in prompt.split()} - _STOP_LITE
+    qwords = {w for w in qwords if len(w) > 2}
+    if len(qwords) < 2:
+        return None
+    best = None
+    for r in kept[:3]:
+        for sent in re.split(r'(?<=[.!?])\s+|\n+', r.get('content', '')):
+            s = sent.strip().strip('-*# ')
+            if not (25 <= len(s) <= 400):
+                continue
+            overlap = len(qwords & {w.strip('?.,!').lower() for w in s.split()})
+            if best is None or overlap > best[0]:
+                best = (overlap, s, r.get('source', ''))
+    if not best or best[0] < 3:
+        return None
+    _, sentence, source = best
+    return (f'"{sentence}" (Source: {source})\n\n'
+            f'Exact extract from the source document - no model generation involved.'), source
+
+
 def _route_query(prompt: str, node_registry) -> Optional[Any]:
     logger.info(f"[ROUTING] Analyzing query: '{prompt}'")
     p = prompt.lower().strip()
@@ -282,7 +323,7 @@ def create_app():
         return jsonify({'filepath': filepath, 'message': 'File uploaded successfully'})
 
     def _retrieve(prompt, dataset_id):
-        """Semantic retrieval. Returns (context, sources, top_score).
+        """Semantic retrieval. Returns (context, sources, top_score, kept).
 
         Context is capped at MAX_CONTEXT_CHARS so the grounded prompt always
         fits inside the model's context window.
@@ -294,7 +335,7 @@ def create_app():
         # only the first one grounded questions against the wrong documents.
         ids = [dataset_id] if dataset_id else [d['id'] for d in datasets]
         if not ids:
-            return "", [], 0.0
+            return "", [], 0.0, []
         results = []
         for did in ids:
             try:
@@ -304,7 +345,7 @@ def create_app():
         results.sort(key=lambda r: r.get('score', 0), reverse=True)
         results = results[:8]
         if not results:
-            return "", [], 0.0
+            return "", [], 0.0, []
         top_score = results[0]['score']
         kept = [r for r in results if r['score'] >= max(0.2, top_score - 0.15)]
         context, sources = "", []
@@ -321,7 +362,7 @@ def create_app():
             context += piece
             if r['source'] not in sources:
                 sources.append(r['source'])
-        return context, sources, top_score
+        return context, sources, top_score, kept
 
     @app.route('/query', methods=['POST', 'OPTIONS'])
     def submit_query():
@@ -400,7 +441,7 @@ def create_app():
 
             # ---- RETRIEVAL-FIRST ROUTING ---------------------------------
             _set_progress('retrieving documents')
-            context, sources, top_score = _retrieve(prompt, dataset_id)
+            context, sources, top_score, kept = _retrieve(prompt, dataset_id)
             should_ground = forced or (bool(context) and top_score >= GROUND_THRESHOLD)
 
             if forced and not context:
@@ -409,6 +450,21 @@ def create_app():
                                 'node_id': 'language-mistral-7b', 'sources': []})
 
             if should_ground and context:
+                # EXTRACTIVE FAST PATH: for a direct fact question with high
+                # retrieval confidence, quote the exact source sentence and
+                # skip the LLM entirely - sub-second and more pristine than a
+                # paraphrase (the answer is a literal, checkable span).
+                ext = _extractive_answer(prompt, kept, top_score)
+                if ext:
+                    text, _src = ext
+                    logger.info(f"Extractive answer (top_score={top_score}, no LLM)")
+                    if sources:
+                        text += "\n\n---\nSources: " + ", ".join(sources)
+                    return jsonify({'result': text, 'response': text,
+                                    'node_id': 'rag-extractive', 'sources': sources,
+                                    'grounded': True, 'top_score': top_score,
+                                    'extractive': True})
+
                 logger.info(f"Grounded answer (top_score={top_score}). Sources: {sources}")
                 lang = node_registry.get_node('language-mistral-7b')
                 recent = _recent_context(conversation_history)

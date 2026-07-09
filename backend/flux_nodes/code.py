@@ -199,8 +199,10 @@ class CodeNode(FluxNode):
                 # evidence than merely executing, and the label says which.
                 if 'assert' in code:
                     logger.info("Code verified: ran and passed its self-tests")
-                    label = ("Verified: the code was executed and passed its "
-                             "self-generated assert tests.")
+                    label = ("Verified: the code was executed and passed the "
+                             "assert tests shown above. (These are "
+                             "model-written tests - independent tests are "
+                             "stronger evidence.)")
                 else:
                     logger.info("Code verified: executes without errors (no self-tests)")
                     label = ("Executed only - NOT behavior-verified: the code "
@@ -233,3 +235,5 @@ class CodeNode(FluxNode):
 Provide ONE complete, ready-to-run Python code block containing: the function with necessary imports and brief comments, followed by 3 module-level assert statements that test a typical case, an empty/edge case, and the expected behavior. Do not add extra exercises or commentary after the code.
 
 Code:"""
+"""
+"""
