@@ -24,9 +24,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # llama.cpp is NOT thread-safe: two requests generating on the same model at
-# once segfault the process. All inference goes through this lock so queries
-# queue up instead of crashing the server.
-_INFER_LOCK = threading.Lock()
+# once segfault the process. All LLM inference goes through this shared lock
+# so queries queue up instead of crashing the server. It lives in
+# shared_model so deterministic paths (SymPy math) can skip it entirely.
+from flux_nodes.shared_model import INFER_LOCK as _INFER_LOCK
 
 # Cancelled client request ids. /query re-checks this after acquiring the
 # inference lock, so a job cancelled while QUEUED is skipped instead of
@@ -352,12 +353,15 @@ def create_app():
                     logger.info("Math shortcut: routing directly to SymPy")
                     q = Query(id=f"query_{int(time.time() * 1000)}", text=prompt,
                               parameters={}, history=[])
-                    _set_progress('queued', 'math')
-                    with _INFER_LOCK:
-                        if _is_cancelled(client_rid):
-                            return jsonify({'cancelled': True}), 409
-                        _set_progress('computing', 'exact math (SymPy)')
-                        response = math_node.process(q)
+                    # NO inference lock here: SymPy is instant and must never
+                    # queue behind a multi-minute LLM generation (benchmark
+                    # once measured 3987s for "3,500 + 4,250" purely from
+                    # waiting in line). The node's own LLM fallback for word
+                    # problems takes the lock internally.
+                    if _is_cancelled(client_rid):
+                        return jsonify({'cancelled': True}), 409
+                    _set_progress('computing', 'exact math (SymPy)')
+                    response = math_node.process(q)
                     return jsonify({'result': response.text, 'response': response.text,
                                     'node_id': 'math-llm-eval', 'sources': [],
                                     'grounded': False})

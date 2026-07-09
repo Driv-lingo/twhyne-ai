@@ -60,7 +60,7 @@ def _normalize(query: str) -> str:
     sl = ' ' + s + ' '
     for w, o in _WORD_OPS:
         # Replacement via lambda: '*' must be inserted literally. Escaping it
-        # in a replacement STRING leaves a literal backslash behind ('58 \\* 73'),
+        # in a replacement STRING leaves a literal backslash behind ('58 \* 73'),
         # which broke every 'times'/'multiplied by' query.
         sl = re.sub(r'\s' + w + r'\s', lambda _m, _o=o: f' {_o} ', sl, flags=re.I)
     return sl.strip()
@@ -169,10 +169,13 @@ class MathNode(FluxNode):
                 return "I couldn't parse that as a math expression."
             # Fetch at call time (do not cache): the shared cache keeps one
             # resident model and may evict/reload between calls.
-            from .shared_model import get_shared_model
-            llm = get_shared_model(self.model_path)
-            out = llm(f"Solve this math problem step by step and give the final numeric answer:\n{query}\nAnswer:",
-                      max_tokens=768, stop=["</s>"], temperature=0.2, echo=False)
+            from .shared_model import get_shared_model, INFER_LOCK
+            # The SymPy path above is lock-free; only this LLM fallback
+            # must serialize with other generations.
+            with INFER_LOCK:
+                llm = get_shared_model(self.model_path)
+                out = llm(f"Solve this math problem step by step and give the final numeric answer:\n{query}\nAnswer:",
+                          max_tokens=768, stop=["</s>"], temperature=0.2, echo=False)
             return out['choices'][0]['text'].strip()
         except Exception as e:
             logger.error(f"Math LLM fallback error: {e}")

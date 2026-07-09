@@ -68,10 +68,31 @@ def _verify_code(code: str) -> (bool, str):
     top-level code; function bodies are compiled and validated. Runs with -I
     (isolated mode) and a hard 10s timeout inside the app container.
     """
+    # An unfinished placeholder is not an answer, even if it happens to
+    # pass its (equally stubbed) asserts - benchmark caught TODO stubs
+    # returning 0 being labeled "verified".
+    if re.search(r'#\s*todo', code, re.I) or 'pass  # implement' in code.lower():
+        return False, "code contains an unfinished TODO placeholder - write the full implementation"
     try:
         compile(code, '<generated>', 'exec')
     except SyntaxError as e:
         return False, f"SyntaxError: {e}"
+    # A function whose body is just a docstring/pass compiles and "runs"
+    # but implements nothing (benchmark: celsius_to_fahrenheit was an empty
+    # def labeled "Executed only"). Treat it as a failure so it retries.
+    try:
+        import ast
+        tree = ast.parse(code)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                real = [s for s in node.body
+                        if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant))
+                        and not isinstance(s, ast.Pass)]
+                if not real:
+                    return False, (f"function {node.name} has an empty body - "
+                                   f"write the full implementation")
+    except SyntaxError:
+        pass
     try:
         proc = subprocess.run(
             [sys.executable, '-I', '-c', code],

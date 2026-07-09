@@ -31,6 +31,13 @@ logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 _cache = {}
 
+# Global inference lock: llama.cpp is NOT thread-safe, so ALL LLM
+# generation serializes through this. Lives here (not server.py) so nodes
+# that only sometimes need the LLM - like the math node's word-problem
+# fallback - can take it themselves, while their deterministic paths
+# (SymPy) stay lock-free and never queue behind a long generation.
+INFER_LOCK = threading.Lock()
+
 _LOCAL_CACHE_DIR = Path('/app/model_cache')
 
 
