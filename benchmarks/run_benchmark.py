@@ -167,7 +167,19 @@ def ask_twhyne(base_url, prompt, dataset_id=None, use_rag=False):
     if use_rag and dataset_id:
         payload["dataset_id"] = dataset_id
         payload["use_rag"] = True
-    resp = _post(base_url + "/query", payload)
+    # Cancel on timeout: an abandoned request otherwise keeps generating on
+    # the backend and every later query queues behind it (one zombie job
+    # once pushed an instant SymPy answer to 3987s of queue wait).
+    rid = f"bench-{int(time.time() * 1000)}"
+    payload["client_request_id"] = rid
+    try:
+        resp = _post(base_url + "/query", payload)
+    except Exception:
+        try:
+            _post(base_url + "/cancel", {"client_request_id": rid}, timeout=15)
+        except Exception:
+            pass
+        raise
     text = resp.get("response") or resp.get("result") or ""
     return text, resp.get("sources", []), resp.get("node_id", "")
 
@@ -248,7 +260,9 @@ def main():
               f"Start the Twhyne app first, then re-run.")
         sys.exit(1)
 
-    tasks = json.loads(TASKS_FILE.read_text())
+    # encoding matters: Windows defaults to cp1252, which turns the unicode
+    # multiplication sign into mojibake ("47 Ã— 8,912") and broke math routing.
+    tasks = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
     dataset_id = None
     if any(t.get("use_rag") for cat in tasks.values() for t in cat):
         print("Preparing benchmark RAG corpus...")
