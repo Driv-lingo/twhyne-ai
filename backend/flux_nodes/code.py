@@ -235,5 +235,3 @@ class CodeNode(FluxNode):
 Provide ONE complete, ready-to-run Python code block containing: the function with necessary imports and brief comments, followed by 3 module-level assert statements that test a typical case, an empty/edge case, and the expected behavior. Do not add extra exercises or commentary after the code.
 
 Code:"""
-"""
-"""
