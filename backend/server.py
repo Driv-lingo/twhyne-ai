@@ -81,6 +81,20 @@ MAX_CONTEXT_CHARS_AUTO = 3000
 import re
 _MATH_RE = re.compile(r'\d\s*[-+*/^=]\s*\d')
 
+# Default code model, chosen automatically: Qwen2.5-Coder benchmarked 10/10
+# against external unit tests vs CodeLlama's 3/10, so it ships as the
+# default. Existing installs without the Qwen file fall back to CodeLlama -
+# no user configuration required either way.
+_MODELS_DIR_ = Path(__file__).parent.parent / 'models'
+if (_MODELS_DIR_ / 'qwen2.5-coder-7b-instruct-q4.gguf').exists():
+    CODE_NODE_ID = 'code-qwen-coder-7b'
+    CODE_NODE_NAME = 'Code (Qwen2.5-Coder-7B)'
+    CODE_MODEL_FILE = 'qwen2.5-coder-7b-instruct-q4.gguf'
+else:
+    CODE_NODE_ID = 'code-codellama-7b'
+    CODE_NODE_NAME = 'Code (CodeLlama-7B)'
+    CODE_MODEL_FILE = 'codellama-7b-q4.gguf'
+
 
 def _recent_context(history, cap=600):
     """Last user/assistant exchange, trimmed hard.
@@ -222,7 +236,7 @@ def _cache_put(key, payload):
 def _route_query(prompt: str, node_registry) -> Optional[Any]:
     logger.info(f"[ROUTING] Analyzing query: '{prompt}'")
     p = prompt.lower().strip()
-    scores = {'math-llm-eval': 0, 'code-codellama-7b': 0, 'planner-mistral-7b': 0,
+    scores = {'math-llm-eval': 0, CODE_NODE_ID: 0, 'planner-mistral-7b': 0,
               'vision-llava-1.6-7b': 0, 'language-mistral-7b': 0}
 
     # Operator symbols count ONLY between digits ("3+4"). Bare substring
@@ -244,7 +258,7 @@ def _route_query(prompt: str, node_registry) -> Optional[Any]:
                'binary tree', 'linked list', 'recursion', 'recursive', 'array',
                'data structure', 'regex', 'sql']:
         if _has_kw(kw):
-            scores['code-codellama-7b'] += 1
+            scores[CODE_NODE_ID] += 1
     for kw in ['plan', 'schedule', 'organize', 'workflow', 'itinerary', 'trip', 'project', 'timeline', 'roadmap']:
         if _has_kw(kw):
             scores['planner-mistral-7b'] += 1
@@ -294,9 +308,9 @@ def create_app():
         lambda: PlannerNode(node_id='planner-mistral-7b', name='Planner (Mistral-7B)',
                             description='Task planning and decomposition',
                             model_path=models_dir / 'mistral-7b-instruct-q4.gguf'),
-        lambda: CodeNode(node_id='code-codellama-7b', name='Code (CodeLlama-7B)',
-                         description='Code generation using CodeLlama-7B',
-                         model_path=models_dir / 'codellama-7b-q4.gguf'),
+        lambda: CodeNode(node_id=CODE_NODE_ID, name=CODE_NODE_NAME,
+                         description='Code generation with execute-before-answer verification',
+                         model_path=models_dir / CODE_MODEL_FILE),
         lambda: VisionNode(node_id='vision-llava-1.6-7b', name='Vision (LLaVA-1.6-7B)',
                            description='Image captioning and visual QA using LLaVA.',
                            model_path=models_dir / 'llava-v1.5-7b-Q4_K.gguf',
@@ -323,6 +337,9 @@ def create_app():
             # write a BOM, which plain utf-8 JSON parsing rejects.
             for entry in _json.loads(registry_file.read_text(encoding='utf-8-sig')):
                 try:
+                    if node_registry.get_node(entry.get('node_id', '')):
+                        logger.info(f"Skipping registry entry {entry.get('node_id')}: already a built-in node")
+                        continue
                     # role "code": the model gets the full VERIFIED CodeNode
                     # pipeline (execute-before-answer, retry on failure,
                     # honest labels) instead of raw generation - a raw node

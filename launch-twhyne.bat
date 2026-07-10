@@ -70,7 +70,7 @@ set RAG_DIR=%TWHYNE_DIR%\rag
 if not exist "%RAG_DIR%" mkdir "%RAG_DIR%"
 
 call :get_model "mistral-7b-instruct-q4.gguf" "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
-call :get_model "codellama-7b-q4.gguf"        "https://huggingface.co/TheBloke/CodeLlama-7B-GGUF/resolve/main/codellama-7b.Q4_K_M.gguf"
+call :get_model "qwen2.5-coder-7b-instruct-q4.gguf" "https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf"
 call :get_model "llava-v1.5-7b-Q4_K.gguf"       "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/ggml-model-q4_k.gguf"
 call :get_model "mmproj-model-f16.gguf"         "https://huggingface.co/mys/ggml_llava-v1.5-7b/resolve/main/mmproj-model-f16.gguf"
 call :get_model "bge-small-en-v1.5-f16.gguf"     "https://huggingface.co/CompendiumLabs/bge-small-en-v1.5-gguf/resolve/main/bge-small-en-v1.5-f16.gguf"
