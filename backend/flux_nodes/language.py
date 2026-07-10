@@ -57,7 +57,12 @@ class LanguageNode(FluxNode):
                 # under load, so 512 tokens meant multi-minute worst cases
                 # (benchmark saw 600s timeouts on trivial questions).
                 max_tokens=320, temperature=0.5, top_p=0.8, top_k=20,
-                repeat_penalty=1.0, stop=["</s>"], echo=False,
+                # Stop sequences: the grounded prompt ends "Question: X / Answer:",
+                # and without these the model continues inventing extra Q/A
+                # pairs - spilling unrelated (even confidential) retrieved
+                # content into the answer and wasting minutes of generation.
+                repeat_penalty=1.0,
+                stop=["</s>", "\nQuestion:", "\n[Question", "\nQ:"], echo=False,
             )
             return response['choices'][0]['text'].strip()
         except Exception as e:

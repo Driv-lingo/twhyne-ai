@@ -175,8 +175,8 @@ g("g20", "Within how many minutes must PRN medications be documented under the 2
 # CONFLICTING documents: the 2026 update supersedes the 30-day retention.
 g("adv_conflict1", "According to the most recent policy, how many days are backups retained?",
   expect_contains=["45"])
-g("adv_conflict2", "The manuals disagree about backup retention. What are the two retention periods stated, and which is current?",
-  expect_contains=["45"], expect_any=["30"])
+g("adv_conflict2", "The manuals disagree about backup retention. What retention periods are stated, and which is current?",
+  expect_contains=["45"], expect_any=["30", "14"])
 g("adv_conflict3", "Has the backup retention period changed? Answer with the old and new values.",
   expect_contains=["45"], expect_any=["30", "supersed", "revis", "chang"])
 

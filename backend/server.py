@@ -127,7 +127,9 @@ def _looks_like_math(prompt: str) -> bool:
     kws = ['calculate', 'compute', 'solve', 'derivative', 'integral',
            'integrate', 'differentiate', 'square root', 'divided by',
            'multiplied by', 'plus ', 'minus ', 'times ']
-    return any(k in p for k in kws) and any(c.isdigit() or c.isalpha() for c in p)
+    # A word-operator match needs an actual digit: 'counts how many times
+    # target appears' is a coding request, not arithmetic.
+    return any(k in p for k in kws) and any(c.isdigit() for c in p)
 
 
 # Question shapes eligible for the extractive fast path: short, direct
@@ -605,6 +607,10 @@ def create_app():
                 if ext:
                     text, _src = ext
                     logger.info(f"Extractive answer (top_score={top_score}, no LLM)")
+                    # Source minimality: the answer is one quoted span, so
+                    # cite ONLY the document it came from - listing every
+                    # retrieved document is decorative and misleading.
+                    sources = [_src] if _src else sources[:1]
                     if sources:
                         text += "\n\n---\nSources: " + ", ".join(sources)
                     payload = {'result': text, 'response': text,

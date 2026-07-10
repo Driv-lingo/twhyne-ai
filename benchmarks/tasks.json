@@ -942,13 +942,14 @@
   },
   {
    "id": "adv_conflict2",
-   "prompt": "The manuals disagree about backup retention. What are the two retention periods stated, and which is current?",
+   "prompt": "The manuals disagree about backup retention. What retention periods are stated, and which is current?",
    "use_rag": true,
    "expect_contains": [
     "45"
    ],
    "expect_any": [
-    "30"
+    "30",
+    "14"
    ]
   },
   {

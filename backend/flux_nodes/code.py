@@ -143,17 +143,28 @@ class CodeNode(FluxNode):
 
         logger.info("CodeNode initialization complete")
 
+    def _wrap_prompt(self, prompt_text: str) -> str:
+        """Apply the model's chat template when it has one.
+
+        Qwen through a plain completion prompt produced "# Your code here"
+        stubs; through its ChatML template it produced clean solutions.
+        """
+        if 'qwen' in str(self.model_path).lower():
+            return (f"<|im_start|>user\n{prompt_text}<|im_end|>\n"
+                    f"<|im_start|>assistant\n")
+        return prompt_text
+
     def _generate_once(self, model, prompt_text: str) -> str:
         # Stop sequences keep the model from rambling into invented follow-up
         # exercises after it has answered (observed in benchmark output).
         response = model(
-            prompt_text,
+            self._wrap_prompt(prompt_text),
             max_tokens=512,
             temperature=0.4,
             top_p=0.9,
             top_k=40,
             repeat_penalty=1.1,
-            stop=["</s>", "###", "\nRequest:", "Comment:",
+            stop=["</s>", "<|im_end|>", "###", "\nRequest:", "Comment:",
                   "\nIt failed with", "\nIt passed with",
                   "You are a helpful coding assistant"],
             echo=False,

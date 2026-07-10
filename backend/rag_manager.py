@@ -87,6 +87,22 @@ def _content_words(text: str) -> set:
     return {w for w in text.lower().split() if w not in _STOPWORDS and len(w) > 1}
 
 
+# PERMISSION-BEFORE-RETRIEVAL (v1, fail-closed): chunks from documents that
+# declare themselves confidential never enter the retrieval candidate set,
+# so restricted content cannot be quoted, cited, or leaked into answers.
+# (Benchmark: an admin password and a salary were extracted verbatim from a
+# document marked "CONFIDENTIAL - RESTRICTED ACCESS".) A future permission
+# model can lift this per-session; until then, restricted means excluded.
+_RESTRICTED_RE = __import__('re').compile(
+    r'\bCONFIDENTIAL\b|\bRESTRICTED\s+ACCESS\b|\bDO\s+NOT\s+DISCLOSE\b', __import__('re').I)
+
+
+def _is_restricted(doc) -> bool:
+    if 'restricted' not in doc:
+        doc['restricted'] = bool(_RESTRICTED_RE.search(doc.get('content', '')))
+    return doc['restricted']
+
+
 class SemanticRAGManager:
     """Embedding-based retrieval with a keyword fallback."""
 
@@ -208,7 +224,7 @@ class SemanticRAGManager:
         cached = self._matrix_cache.get(dataset_id)
         if cached is not None:
             return cached
-        embdocs = [d for d in docs if d.get("embedding")]
+        embdocs = [d for d in docs if d.get("embedding") and not _is_restricted(d)]
         if not embdocs or _np is None:
             self._matrix_cache[dataset_id] = (None, embdocs)
             return None, embdocs
@@ -252,6 +268,8 @@ class SemanticRAGManager:
             return []
         results = []
         for doc in documents:
+            if _is_restricted(doc):
+                continue
             matching = query_words.intersection(_content_words(doc["content"]))
             if matching:
                 score = len(matching) / max(len(query_words), 1)
