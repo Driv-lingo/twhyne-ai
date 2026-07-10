@@ -337,6 +337,87 @@ def _scrub_secrets(text):
     return text, hits
 
 
+# ---- Immutable audit ledger (tamper-evident, hash-chained) ----------
+# Every answered query appends one record whose hash chains to the previous
+# record's hash (like a mini blockchain / git log). Any later edit to a past
+# record breaks the chain from that point on, so tampering is DETECTABLE even
+# though the file is a plain append-only JSONL. This is the "auditable, not
+# incorruptible" property: we can prove whether the log was altered.
+import hashlib as _hashlib
+
+_AUDIT_LOCK = _threading.Lock() if False else __import__('threading').Lock()
+_AUDIT_PATH = Path(os.environ.get(
+    'TWHYNE_AUDIT_LOG',
+    str(Path(__file__).parent / 'rag_storage' / 'audit_ledger.jsonl')))
+
+
+def _audit_last_hash():
+    try:
+        if not _AUDIT_PATH.exists():
+            return '0' * 64
+        with open(_AUDIT_PATH, 'rb') as f:
+            last = b''
+            for line in f:
+                if line.strip():
+                    last = line
+        if not last:
+            return '0' * 64
+        return __import__('json').loads(last).get('hash', '0' * 64)
+    except Exception:
+        return '0' * 64
+
+
+def _audit_append(event):
+    """Append one hash-chained audit record. Never raises into the request."""
+    try:
+        import json as _json
+        _AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with _AUDIT_LOCK:
+            prev = _audit_last_hash()
+            rec = {
+                'ts': time.time(),
+                'prev': prev,
+                'role': event.get('role'),
+                'prompt_sha': _hashlib.sha256(
+                    (event.get('prompt') or '').encode()).hexdigest()[:16],
+                'node_id': event.get('node_id'),
+                'sources': event.get('sources') or [],
+                'verdict': event.get('verdict'),
+                'redacted': bool(event.get('redacted')),
+                'cached': bool(event.get('cached')),
+            }
+            # hash covers the record body + the previous hash => chain
+            body = _json.dumps(rec, sort_keys=True)
+            rec['hash'] = _hashlib.sha256((prev + body).encode()).hexdigest()
+            with open(_AUDIT_PATH, 'a') as f:
+                f.write(_json.dumps(rec) + '\n')
+    except Exception as e:
+        logger.error(f"audit append failed: {e}")
+
+
+def _audit_verify():
+    """Walk the chain; return (ok, count, first_broken_index)."""
+    import json as _json
+    if not _AUDIT_PATH.exists():
+        return True, 0, None
+    prev = '0' * 64
+    n = 0
+    with open(_AUDIT_PATH) as f:
+        for i, line in enumerate(f):
+            line = line.strip()
+            if not line:
+                continue
+            rec = _json.loads(line)
+            stored = rec.pop('hash', None)
+            body = _json.dumps({k: rec[k] for k in rec if k != 'hash'}, sort_keys=True)
+            calc = _hashlib.sha256((rec.get('prev', '') + body).encode()).hexdigest()
+            if rec.get('prev') != prev or calc != stored:
+                return False, n, i
+            prev = stored
+            n += 1
+    return True, n, None
+
+
 # ---- Model pipeline: add a Hugging Face GGUF as a live node ----------
 # The custom-node registry already lets a GGUF become an expert node. This
 # turns the manual "download + edit nodes.json + restart" dance into an API:
@@ -599,8 +680,24 @@ def create_app():
                     data['redacted'] = True
                     logger.warning("Output secret veto redacted content from a response")
                     resp.set_data(__import__('json').dumps(data))
+                # One tamper-evident audit record per answered query.
+                verdict = ('refused' if isinstance(data.get('response'), str)
+                           and ('do not have' in data['response'].lower()
+                                or 'not in the' in data['response'].lower()
+                                or 'not authorized' in data['response'].lower())
+                           else 'cancelled' if data.get('cancelled')
+                           else 'answered')
+                _audit_append({
+                    'role': data.get('role'),
+                    'prompt': (request.get_json(silent=True) or {}).get('prompt', ''),
+                    'node_id': data.get('node_id'),
+                    'sources': data.get('sources'),
+                    'verdict': verdict,
+                    'redacted': data.get('redacted'),
+                    'cached': data.get('cached'),
+                })
         except Exception as e:
-            logger.error(f"Redaction hook error: {e}")
+            logger.error(f"Redaction/audit hook error: {e}")
         return resp
 
     @app.route('/query', methods=['POST', 'OPTIONS'])
@@ -944,6 +1041,33 @@ def create_app():
         _write_registry(entries)
         logger.info(f"Removed custom node: {node_id}")
         return jsonify({'removed': node_id})
+
+    @app.route('/api/audit', methods=['GET'])
+    def audit_tail():
+        """Recent audit records (default last 50) + chain-integrity status."""
+        import json as _json
+        try:
+            limit = int(request.args.get('limit', 50))
+        except Exception:
+            limit = 50
+        recs = []
+        if _AUDIT_PATH.exists():
+            with open(_AUDIT_PATH) as f:
+                lines = [l for l in f if l.strip()]
+            for l in lines[-limit:]:
+                try:
+                    recs.append(_json.loads(l))
+                except Exception:
+                    pass
+        ok, count, broken = _audit_verify()
+        return jsonify({'records': recs, 'total': count,
+                        'chain_intact': ok, 'broken_at': broken})
+
+    @app.route('/api/audit/verify', methods=['GET'])
+    def audit_verify():
+        """Prove the audit chain has not been tampered with."""
+        ok, count, broken = _audit_verify()
+        return jsonify({'chain_intact': ok, 'records': count, 'broken_at': broken})
 
     @app.route('/api/permissions', methods=['GET'])
     def get_permissions():

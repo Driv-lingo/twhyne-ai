@@ -95,6 +95,8 @@ def _content_words(text: str) -> set:
 # model can lift this per-session; until then, restricted means excluded.
 _RESTRICTED_RE = __import__('re').compile(
     r'\bCONFIDENTIAL\b|\bRESTRICTED\s+ACCESS\b|\bDO\s+NOT\s+DISCLOSE\b', __import__('re').I)
+# Chunk-level ACL marker: "[[ROLES: it_admin, admin]]" anywhere in a chunk.
+_CHUNK_ROLE_RE = __import__('re').compile(r'\[\[ROLES:\s*([a-z0-9_,\s-]+)\]\]', __import__('re').I)
 
 
 def _is_restricted(doc) -> bool:
@@ -197,8 +199,23 @@ class SemanticRAGManager:
                 return role in allowed
         return None  # no explicit rule; caller applies content-based default
 
+    def _chunk_roles(self, doc):
+        """CHUNK-LEVEL ACL: an inline '[[ROLES: it_admin, admin]]' tag in a
+        chunk restricts THAT chunk to the listed roles, independent of its
+        document's rule - so one sensitive paragraph inside an otherwise-open
+        file is protected on its own. Parsed once and cached on the chunk."""
+        if 'chunk_roles' not in doc:
+            m = _CHUNK_ROLE_RE.search(doc.get('content', ''))
+            doc['chunk_roles'] = ([r.strip().lower() for r in m.group(1).split(',') if r.strip()]
+                                  if m else None)
+        return doc['chunk_roles']
+
     def _doc_allowed(self, doc, role: str) -> bool:
         role = (role or 'public').strip().lower()
+        # Chunk-level ACL is the tightest boundary and wins outright.
+        chunk_roles = self._chunk_roles(doc)
+        if chunk_roles is not None:
+            return role in chunk_roles
         source = doc.get('source', '')
         explicit = self.role_can_access(source, role)
         if explicit is not None:
