@@ -63,10 +63,19 @@ def _set_progress(state, detail=''):
 # = 0.57), while genuinely relevant pairs score 0.61-0.79. 0.60 splits the
 # two bands; 0.30 grounded literally everything.
 GROUND_THRESHOLD = 0.60
+# AUTO-grounding (no dataset pinned) demands more confidence: benchmark
+# showed general questions like "mixing blue and yellow paint" scoring just
+# over 0.60 against unrelated business documents, then burning 600s+ of CPU
+# on prompt evaluation of irrelevant context. Explicitly attached datasets
+# keep the lower bar - the user asserted relevance by attaching them.
+GROUND_THRESHOLD_AUTO = 0.64
 # Max characters of retrieved context to inject. PDF-extracted text tokenizes
 # densely (~1 token per char in bad stretches), so this must leave real
 # headroom inside the 8192-token window for the question and the answer.
 MAX_CONTEXT_CHARS = 6500
+# Auto-grounded answers get a smaller context budget: prompt evaluation on
+# CPU is the dominant cost, and marginal chunks add minutes, not accuracy.
+MAX_CONTEXT_CHARS_AUTO = 3000
 
 
 import re
@@ -132,13 +141,30 @@ def _extractive_answer(prompt, kept, top_score):
     qwords = {w for w in qwords if len(w) > 2}
     if len(qwords) < 2:
         return None
+    wants_value = bool(re.search(
+        r'\b(how\s+(many|much|long|large|big)|at\s+what|on\s+which|within|'
+        r'what\s+time|which\s+port|score|number|days?|hours?|minutes?)\b',
+        prompt, re.I))
     best = None
     for r in kept[:3]:
         for sent in re.split(r'(?<=[.!?])\s+|\n+', r.get('content', '')):
             s = sent.strip().strip('-*# ')
             if not (25 <= len(s) <= 400):
                 continue
-            overlap = len(qwords & {w.strip('?.,!').lower() for w in s.split()})
+            words = s.split()
+            # Headings restate the question's topic without answering it
+            # (benchmark returned "Section 4.2 - Fall Risk Assessment" for
+            # "which fall risk scale?"). Skip section labels and title-case
+            # runs; an answer span is a sentence, not a label.
+            if re.search(r'\bsection\s+\d', s.lower()) and len(words) < 25:
+                continue
+            titled = sum(1 for w in words if w[:1].isupper())
+            if len(words) >= 8 and titled / len(words) > 0.6:
+                continue
+            overlap = len(qwords & {w.strip('?.,!').lower() for w in words})
+            # A quantitative question is answered by a span with the value.
+            if wants_value and re.search(r'\d', s):
+                overlap += 2
             if best is None or overlap > best[0]:
                 best = (overlap, s, r.get('source', ''))
     if not best or best[0] < 3:
@@ -325,8 +351,9 @@ def create_app():
     def _retrieve(prompt, dataset_id):
         """Semantic retrieval. Returns (context, sources, top_score, kept).
 
-        Context is capped at MAX_CONTEXT_CHARS so the grounded prompt always
-        fits inside the model's context window.
+        Context is capped so the grounded prompt always fits inside the
+        model's context window - and auto-grounded answers get a smaller
+        budget, because CPU prompt evaluation is the dominant cost.
         """
         rm = get_rag_manager()
         datasets = rm.list_datasets()
@@ -346,14 +373,15 @@ def create_app():
         results = results[:8]
         if not results:
             return "", [], 0.0, []
+        max_chars = MAX_CONTEXT_CHARS if dataset_id else MAX_CONTEXT_CHARS_AUTO
         top_score = results[0]['score']
         kept = [r for r in results if r['score'] >= max(0.2, top_score - 0.15)]
         context, sources = "", []
         for r in kept:
             piece = f"[Source: {r['source']}]\n{r['content']}\n\n"
-            if len(context) + len(piece) > MAX_CONTEXT_CHARS:
+            if len(context) + len(piece) > max_chars:
                 # Add a truncated remainder to stay within budget, then stop.
-                remaining = MAX_CONTEXT_CHARS - len(context)
+                remaining = max_chars - len(context)
                 if remaining > 200:
                     context += piece[:remaining]
                     if r['source'] not in sources:
@@ -442,7 +470,8 @@ def create_app():
             # ---- RETRIEVAL-FIRST ROUTING ---------------------------------
             _set_progress('retrieving documents')
             context, sources, top_score, kept = _retrieve(prompt, dataset_id)
-            should_ground = forced or (bool(context) and top_score >= GROUND_THRESHOLD)
+            thr = GROUND_THRESHOLD if forced else GROUND_THRESHOLD_AUTO
+            should_ground = forced or (bool(context) and top_score >= thr)
 
             if forced and not context:
                 msg = "I don't have that in my provided sources."
