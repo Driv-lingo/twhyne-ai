@@ -174,6 +174,20 @@ def _extractive_answer(prompt, kept, top_score):
             f'Exact extract from the source document - no model generation involved.'), source
 
 
+# Answer cache for document-grounded questions: the same policy question
+# asked twice should not pay for retrieval + generation twice. Keyed on the
+# normalized question + dataset + document-store version, so any document
+# change invalidates every cached answer automatically. Bounded FIFO.
+_ANSWER_CACHE = {}
+_ANSWER_CACHE_MAX = 256
+
+
+def _cache_put(key, payload):
+    if len(_ANSWER_CACHE) >= _ANSWER_CACHE_MAX:
+        _ANSWER_CACHE.pop(next(iter(_ANSWER_CACHE)))
+    _ANSWER_CACHE[key] = payload
+
+
 def _route_query(prompt: str, node_registry) -> Optional[Any]:
     logger.info(f"[ROUTING] Analyzing query: '{prompt}'")
     p = prompt.lower().strip()
@@ -468,6 +482,21 @@ def create_app():
                                     'grounded': False})
 
             # ---- RETRIEVAL-FIRST ROUTING ---------------------------------
+            # Answer cache: only for fresh questions (no conversation
+            # context, which changes meaning) against the current document
+            # store version.
+            cache_key = None
+            if not conversation_history:
+                try:
+                    cache_key = (re.sub(r'\s+', ' ', prompt.strip().lower()),
+                                 dataset_id or '*', get_rag_manager().version())
+                    hit = _ANSWER_CACHE.get(cache_key)
+                    if hit:
+                        logger.info("Answer cache hit")
+                        return jsonify({**hit, 'cached': True})
+                except Exception:
+                    cache_key = None
+
             _set_progress('retrieving documents')
             context, sources, top_score, kept = _retrieve(prompt, dataset_id)
             thr = GROUND_THRESHOLD if forced else GROUND_THRESHOLD_AUTO
@@ -489,10 +518,13 @@ def create_app():
                     logger.info(f"Extractive answer (top_score={top_score}, no LLM)")
                     if sources:
                         text += "\n\n---\nSources: " + ", ".join(sources)
-                    return jsonify({'result': text, 'response': text,
-                                    'node_id': 'rag-extractive', 'sources': sources,
-                                    'grounded': True, 'top_score': top_score,
-                                    'extractive': True})
+                    payload = {'result': text, 'response': text,
+                               'node_id': 'rag-extractive', 'sources': sources,
+                               'grounded': True, 'top_score': top_score,
+                               'extractive': True}
+                    if cache_key:
+                        _cache_put(cache_key, payload)
+                    return jsonify(payload)
 
                 logger.info(f"Grounded answer (top_score={top_score}). Sources: {sources}")
                 lang = node_registry.get_node('language-mistral-7b')
@@ -522,9 +554,14 @@ def create_app():
                 text = response.text
                 if sources:
                     text += "\n\n---\nSources: " + ", ".join(sources)
-                return jsonify({'result': text, 'response': text,
-                                'node_id': 'language-mistral-7b', 'sources': sources,
-                                'grounded': True, 'top_score': top_score})
+                payload = {'result': text, 'response': text,
+                           'node_id': 'language-mistral-7b', 'sources': sources,
+                           'grounded': True, 'top_score': top_score}
+                # Don't cache error text - a transient failure must not
+                # become the permanent answer.
+                if cache_key and not text.lower().startswith('error'):
+                    _cache_put(cache_key, payload)
+                return jsonify(payload)
 
             # ---- Specialist routing (ungrounded) -------------------------
             logger.info(f"Processing query: {prompt[:100]}...")

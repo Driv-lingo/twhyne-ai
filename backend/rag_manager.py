@@ -27,6 +27,11 @@ try:
 except ImportError:
     Llama = None
 
+try:
+    import numpy as _np  # ships with llama-cpp-python
+except ImportError:
+    _np = None
+
 _embed_model = None
 _embed_lock = threading.Lock()
 
@@ -93,7 +98,18 @@ class SemanticRAGManager:
         # search - re-embedding thousands of chunks and rewriting the whole
         # datasets.json per query (observed as 600s "general chat" queries).
         self._backfilled = set()
+        # Per-dataset normalized embedding matrix, built once and reused.
+        # Cosine scoring in pure Python cost seconds per query on large
+        # datasets; a cached numpy matrix multiply costs ~2ms.
+        self._matrix_cache = {}
         logger.info(f"RAG Manager initialized at {self.storage_dir}")
+
+    def version(self) -> int:
+        """Monotonic-ish version of the document store (for answer caches)."""
+        try:
+            return int(self.datasets_file.stat().st_mtime)
+        except Exception:
+            return 0
 
     def _load_datasets(self) -> Dict[str, Any]:
         if self.datasets_file.exists():
@@ -141,6 +157,7 @@ class SemanticRAGManager:
                 logger.error(f"Error processing file: {e}")
         self.datasets[dataset_id] = {"name": name, "description": description,
                                      "documents": documents, "created_at": str(uuid.uuid4())}
+        self._matrix_cache.pop(dataset_id, None)
         self._save_datasets()
         logger.info(f"Created dataset '{name}' with {len(documents)} chunks")
         return {"id": dataset_id, "name": name, "description": description,
@@ -149,6 +166,7 @@ class SemanticRAGManager:
     def delete_dataset(self, dataset_id: str) -> bool:
         if dataset_id in self.datasets:
             del self.datasets[dataset_id]
+            self._matrix_cache.pop(dataset_id, None)
             self._save_datasets()
             return True
         return False
@@ -175,8 +193,26 @@ class SemanticRAGManager:
                 d["embedding"] = emb
                 fixed += 1
         if fixed:
+            self._matrix_cache.pop(dataset_id, None)
             self._save_datasets()
         logger.info(f"Embedding backfill complete ({fixed}/{len(missing)} chunks embedded).")
+
+    def _embedding_matrix(self, dataset_id):
+        """(normalized numpy matrix, docs-with-embeddings) for a dataset."""
+        docs = self.datasets[dataset_id].get("documents", [])
+        cached = self._matrix_cache.get(dataset_id)
+        if cached is not None:
+            return cached
+        embdocs = [d for d in docs if d.get("embedding")]
+        if not embdocs or _np is None:
+            self._matrix_cache[dataset_id] = (None, embdocs)
+            return None, embdocs
+        M = _np.asarray([d["embedding"] for d in embdocs], dtype=_np.float32)
+        norms = _np.linalg.norm(M, axis=1)
+        norms[norms == 0] = 1e-9
+        M = M / norms[:, None]
+        self._matrix_cache[dataset_id] = (M, embdocs)
+        return M, embdocs
 
     def search_dataset(self, dataset_id: str, query: str, top_k: int = 4) -> List[Dict[str, Any]]:
         if dataset_id not in self.datasets:
@@ -187,16 +223,23 @@ class SemanticRAGManager:
         qv = _embed(query)
         if qv is not None:
             self._ensure_embeddings(dataset_id)
-            scored = []
-            for doc in documents:
-                emb = doc.get("embedding")
-                if emb:
-                    scored.append((_cosine(qv, emb), doc))
-            scored.sort(key=lambda x: x[0], reverse=True)
+            M, embdocs = self._embedding_matrix(dataset_id)
+            if M is not None:
+                q = _np.asarray(qv, dtype=_np.float32)
+                qn = _np.linalg.norm(q)
+                q = q / (qn if qn else 1e-9)
+                sims = M @ q
+                k = min(top_k, len(embdocs))
+                idx = _np.argpartition(-sims, k - 1)[:k]
+                idx = idx[_np.argsort(-sims[idx])]
+                scored = [(float(sims[i]), embdocs[i]) for i in idx]
+            else:
+                scored = sorted(((_cosine(qv, d["embedding"]), d) for d in embdocs),
+                                key=lambda x: x[0], reverse=True)[:top_k]
             return [{"title": d.get("source", ""), "content": d["content"],
                      "score": round(float(s), 3), "source": d.get("source", ""),
                      "chunk_index": d.get("chunk_index", 0)}
-                    for s, d in scored[:top_k]]
+                    for s, d in scored]
 
         # Keyword fallback
         query_words = _content_words(query)
