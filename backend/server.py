@@ -398,11 +398,10 @@ def create_app():
         return jsonify({'filepath': filepath, 'message': 'File uploaded successfully'})
 
     def _retrieve(prompt, dataset_id):
-        """Semantic retrieval. Returns (context, sources, top_score, kept).
+        """Semantic retrieval. Returns (context, sources, top_score).
 
-        Context is capped so the grounded prompt always fits inside the
-        model's context window - and auto-grounded answers get a smaller
-        budget, because CPU prompt evaluation is the dominant cost.
+        Context is capped at MAX_CONTEXT_CHARS so the grounded prompt always
+        fits inside the model's context window.
         """
         rm = get_rag_manager()
         datasets = rm.list_datasets()
@@ -546,8 +545,13 @@ def create_app():
                 pwords = {w for w in re.findall(r'[a-z0-9]+', prompt.lower())
                           if len(w) > 3 and w not in _STOP_LITE}
                 top_text = kept[0].get('content', '').lower()
-                if pwords and not any(w in top_text for w in pwords):
-                    logger.info("Auto-grounding vetoed: no lexical overlap with top chunk")
+                hits = sum(1 for w in pwords if w in top_text)
+                # Two overlapping words required (when the question has that
+                # many): one shared word let a brand-color PDF ground "mixing
+                # blue and yellow paint" just because it mentioned "yellow".
+                need = min(2, len(pwords))
+                if pwords and hits < need:
+                    logger.info("Auto-grounding vetoed: insufficient lexical overlap with top chunk")
                     should_ground = False
 
             if forced and not context:
@@ -600,6 +604,14 @@ def create_app():
                     _set_progress('generating', 'grounded answer with citations')
                     response = lang.process(q)
                 text = response.text
+                # No decorative citations: if an AUTO-grounded answer admits
+                # the sources don't actually contain the information, citing
+                # them anyway misleads ("green ... Sources: Wendys-2021.pdf").
+                if (not forced and re.search(
+                        r"sources\s+do(es)?\s*(not|n't)\s*(directly\s+)?"
+                        r"(contain|provide|include|specify|state|mention)",
+                        text, re.I)):
+                    sources = []
                 if sources:
                     text += "\n\n---\nSources: " + ", ".join(sources)
                 payload = {'result': text, 'response': text,
