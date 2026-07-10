@@ -209,7 +209,9 @@ def _route_query(prompt: str, node_registry) -> Optional[Any]:
         if _has_kw(kw):
             scores['math-llm-eval'] += 2
     for kw in ['code', 'function', 'class', 'method', 'algorithm', 'programming', 'script',
-               'debug', 'syntax', 'variable', 'loop', 'python', 'javascript']:
+               'debug', 'syntax', 'variable', 'loop', 'python', 'javascript',
+               'binary tree', 'linked list', 'recursion', 'recursive', 'array',
+               'data structure', 'regex', 'sql']:
         if _has_kw(kw):
             scores['code-codellama-7b'] += 1
     for kw in ['plan', 'schedule', 'organize', 'workflow', 'itinerary', 'trip', 'project', 'timeline', 'roadmap']:
@@ -286,7 +288,9 @@ def create_app():
         if registry_file.exists():
             import json as _json
             from flux_nodes.custom import CustomLLMNode
-            for entry in _json.loads(registry_file.read_text()):
+            # utf-8-sig: Windows editors (Notepad, PowerShell Out-File)
+            # write a BOM, which plain utf-8 JSON parsing rejects.
+            for entry in _json.loads(registry_file.read_text(encoding='utf-8-sig')):
                 try:
                     n = CustomLLMNode(
                         node_id=entry['node_id'],
@@ -501,6 +505,19 @@ def create_app():
             context, sources, top_score, kept = _retrieve(prompt, dataset_id)
             thr = GROUND_THRESHOLD if forced else GROUND_THRESHOLD_AUTO
             should_ground = forced or (bool(context) and top_score >= thr)
+
+            # Lexical veto for AUTO-grounding: BGE's cosine floor on some
+            # corpora sits above the threshold ("reverse a binary tree"
+            # scored 0.657 against a Taco Bell 10-K). A genuinely relevant
+            # chunk shares at least one meaningful word with the question;
+            # a pure embedding-floor artifact shares none.
+            if should_ground and not forced and kept:
+                pwords = {w for w in re.findall(r'[a-z0-9]+', prompt.lower())
+                          if len(w) > 3 and w not in _STOP_LITE}
+                top_text = kept[0].get('content', '').lower()
+                if pwords and not any(w in top_text for w in pwords):
+                    logger.info("Auto-grounding vetoed: no lexical overlap with top chunk")
+                    should_ground = False
 
             if forced and not context:
                 msg = "I don't have that in my provided sources."

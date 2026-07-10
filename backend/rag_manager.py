@@ -42,12 +42,12 @@ def _get_embed_model():
         with _embed_lock:
             if _embed_model is None:
                 logger.info(f"Loading embedding model: {_EMBED_MODEL_FILE}")
-                # n_ctx=1024: document chunks are 350 WORDS (~500+ tokens),
-                # which overflowed the previous 512-token window and made
-                # embedding fail for large chunks - permanently, see
-                # _ensure_embeddings.
+                # n_ctx stays at BGE-small's TRAINING window (512): running
+                # past it produces unreliable embeddings (llama.cpp warns
+                # "possible training context overflow"). Oversized chunks are
+                # truncated in _embed instead of overflowing the window.
                 _embed_model = Llama(model_path=str(_EMBED_MODEL_FILE), embedding=True,
-                                     n_ctx=1024, verbose=False)
+                                     n_ctx=512, verbose=False)
                 logger.info("Embedding model loaded (semantic retrieval enabled)")
     return _embed_model
 
@@ -57,7 +57,10 @@ def _embed(text: str) -> Optional[List[float]]:
     if m is None:
         return None
     try:
-        out = m.create_embedding(text[:2000])
+        # ~1300 chars stays safely under the 512-token training window
+        # (PDF text can tokenize near 1 token per 2.5 chars). A truncated
+        # embedding of a long chunk beats a corrupted full-window one.
+        out = m.create_embedding(text[:1300])
         return out['data'][0]['embedding']
     except Exception as e:
         logger.error(f"Embedding failed: {e}")
@@ -149,7 +152,9 @@ class SemanticRAGManager:
                 if file_data.get("encoding") == "base64":
                     import base64
                     content = base64.b64decode(content).decode('utf-8', errors='ignore')
-                for i, chunk in enumerate(self._chunk_text(content, chunk_size=350)):
+                # 220 words (~300 tokens) fits comfortably inside the BGE
+                # 512-token embedding window; 350-word chunks overflowed it.
+                for i, chunk in enumerate(self._chunk_text(content, chunk_size=220)):
                     documents.append({"id": f"{dataset_id}-doc-{len(documents)}",
                                       "source": filename, "content": chunk,
                                       "chunk_index": i, "embedding": _embed(chunk)})
