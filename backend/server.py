@@ -344,6 +344,12 @@ def _scrub_secrets(text):
 # though the file is a plain append-only JSONL. This is the "auditable, not
 # incorruptible" property: we can prove whether the log was altered.
 import hashlib as _hashlib
+import hmac as _hmac
+
+
+def _hmac_equal(a, b):
+    """Constant-time string comparison for admin-token checks."""
+    return _hmac.compare_digest(str(a), str(b))
 
 _AUDIT_LOCK = _threading.Lock() if False else __import__('threading').Lock()
 _AUDIT_PATH = Path(os.environ.get(
@@ -1068,6 +1074,115 @@ def create_app():
         """Prove the audit chain has not been tampered with."""
         ok, count, broken = _audit_verify()
         return jsonify({'chain_intact': ok, 'records': count, 'broken_at': broken})
+
+    @app.route('/api/admin/alerts', methods=['GET'])
+    def admin_alerts():
+        """Suspicious / notable security events derived from the audit ledger.
+
+        Turns raw audit records into typed alerts with a plain-language
+        what/why so an operator can review and act. Signals:
+          - audit chain broken               (tamper detected)   -> high
+          - output redaction fired           (secret scrubbed)   -> high
+          - refusal clusters by role         (probing)           -> medium
+          - restricted source in a response  (ACL anomaly)       -> high
+
+        Optional gate: if TWHYNE_ADMIN_TOKEN is set, callers must present a
+        matching X-Admin-Token header (the license site forwards
+        TWHYNE_BACKEND_ADMIN_TOKEN here). When unset, the endpoint is open —
+        it runs on-prem behind the operator's own network.
+        """
+        import json as _json
+        from collections import defaultdict
+        admin_token = os.environ.get('TWHYNE_ADMIN_TOKEN', '').strip()
+        if admin_token:
+            supplied = request.headers.get('X-Admin-Token', '').strip()
+            if not supplied or not _hmac_equal(supplied, admin_token):
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+        try:
+            window = int(request.args.get('limit', 2000))
+        except Exception:
+            window = 2000
+
+        recs = []
+        if _AUDIT_PATH.exists():
+            with open(_AUDIT_PATH) as f:
+                lines = [l for l in f if l.strip()]
+            for l in lines[-window:]:
+                try:
+                    recs.append(_json.loads(l))
+                except Exception:
+                    pass
+
+        alerts = []
+
+        # 1. Tamper detection — the strongest signal.
+        ok, count, broken = _audit_verify()
+        if not ok:
+            alerts.append({
+                'severity': 'high', 'type': 'audit-tamper',
+                'what': f'The audit ledger fails verification at record {broken}.',
+                'why': 'Each record is hash-chained to the previous one; a broken '
+                       'chain means a past record was altered or removed. Preserve '
+                       'the file and investigate who has disk access.',
+                'subject': None,
+            })
+
+        # 2. Redaction events — a secret was caught on the way out.
+        redactions = [r for r in recs if r.get('redacted')]
+        for r in redactions[-25:]:
+            alerts.append({
+                'severity': 'high', 'type': 'output-redaction',
+                'what': f"Output redaction fired for role '{r.get('role')}' "
+                        f"(prompt {r.get('prompt_sha')}).",
+                'why': 'The response contained a value matching a secret pattern '
+                       'and was scrubbed before returning. Worth reviewing whether '
+                       'the query was an attempt to elicit a credential.',
+                'subject': r.get('role'),
+            })
+
+        # 3. Refusal clusters — repeated denials from one role look like probing.
+        refusals = defaultdict(int)
+        for r in recs:
+            if str(r.get('verdict') or '').upper() == 'REFUSED':
+                refusals[r.get('role') or 'unknown'] += 1
+        for role, n in refusals.items():
+            if n >= 5:
+                alerts.append({
+                    'severity': 'medium', 'type': 'refusal-cluster',
+                    'what': f"Role '{role}' was refused {n} times in the recent window.",
+                    'why': 'A run of refusals can be a user repeatedly asking for '
+                           'documents or actions outside their permissions — '
+                           'consistent with probing. Confirm the role is legitimate.',
+                    'subject': role,
+                })
+
+        # 4. Restricted source anomaly — a protected doc appeared in a response.
+        # Permission-before-retrieval should make this impossible; if it ever
+        # shows up it is a first-order ACL bug, so surface it loudly.
+        try:
+            rmgr = get_rag_manager()
+            for r in recs[-200:]:
+                role = r.get('role') or 'public'
+                for src in (r.get('sources') or []):
+                    allowed = rmgr.role_can_access(src, role)
+                    if allowed is False:
+                        alerts.append({
+                            'severity': 'high', 'type': 'acl-anomaly',
+                            'what': f"Response to role '{role}' cited '{src}', which "
+                                    f"that role is not permitted to access.",
+                            'why': 'A restricted source reached an unauthorized role. '
+                                   'This should never happen under permission-before-'
+                                   'retrieval — treat as an access-control regression.',
+                            'subject': src,
+                        })
+        except Exception:
+            pass
+
+        rank = {'high': 0, 'medium': 1, 'low': 2}
+        alerts.sort(key=lambda a: rank.get(a.get('severity'), 3))
+        return jsonify({'success': True, 'alerts': alerts, 'count': len(alerts),
+                        'records_scanned': len(recs), 'chain_intact': ok})
 
     @app.route('/api/permissions', methods=['GET'])
     def get_permissions():
