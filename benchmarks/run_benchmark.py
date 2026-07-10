@@ -95,12 +95,19 @@ def score_code(task, answer, sources):
     wrong FizzBuzz (15 -> 'Fizz') and TODO stubs count as passes.
     """
     ok, reasons = score_contains(task, answer, sources)
+    reasons = [] if ok else [reasons]
     m = _CODE_BLOCK_RE.search(answer)
     if not m:
         return False, "no code block in answer"
     code = m.group(1).strip()
     tests = task.get("unit_tests", [])
     if tests:
+        # EXTERNAL tests are the sole correctness judge: strip the model's
+        # own module-level asserts first. Qwen once wrote a correct function
+        # with a WRONG self-test (sum_even([10,23,45,68]) == 88; it's 78),
+        # which crashed before the external tests could vindicate the code.
+        code = "\n".join(l for l in code.split("\n")
+                         if not l.strip().startswith("assert "))
         program = code + "\n\n" + "\n".join(tests) + "\n"
         try:
             proc = subprocess.run([sys.executable, "-I", "-c", program],
@@ -110,8 +117,8 @@ def score_code(task, answer, sources):
                 return False, f"external unit tests FAILED: {err}"
         except subprocess.TimeoutExpired:
             return False, "external unit tests timed out"
-    if not ok:
-        return False, reasons
+    if not (ok if isinstance(ok, bool) else True):
+        return False, "; ".join(reasons)
     return True, "external unit tests passed" if tests else "all checks passed"
 
 
@@ -297,9 +304,16 @@ def main():
                 local_ok, reason = scorer(task, answer, sources)
                 if local_ok and limit and elapsed > limit:
                     local_ok, reason = False, f"correct but too slow ({elapsed}s > {limit}s limit)"
+                # expect_node supports a role wildcard ("code-*") so swapping
+                # in a better model of the same role never scores as a
+                # misroute - the benchmark checks WHERE it went, not WHICH
+                # brand of model answered.
                 want_node = task.get("expect_node")
-                if local_ok and want_node and node_id != want_node:
-                    local_ok, reason = False, f"misrouted: answered by '{node_id}', expected '{want_node}'"
+                if local_ok and want_node:
+                    matched = (node_id.startswith(want_node[:-1])
+                               if want_node.endswith("*") else node_id == want_node)
+                    if not matched:
+                        local_ok, reason = False, f"misrouted: answered by '{node_id}', expected '{want_node}'"
 
             cloud_ok = None
             if args.cloud:
