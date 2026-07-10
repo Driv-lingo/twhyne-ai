@@ -293,6 +293,50 @@ def _route_query(prompt: str, node_registry) -> Optional[Any]:
     return None
 
 
+# OUTPUT-SIDE SECRET VETO (defense in depth, independent of retrieval).
+# The retrieval-side restriction (rag_manager) hides documents that DECLARE
+# themselves confidential - but a secret in an unmarked document, or reached
+# any other way, would slip past it. This second layer scans the FINAL answer
+# for secret-SHAPED content and redacts before it leaves the server, no
+# matter how it got there. It is heuristic, not a guarantee: it raises the
+# bar, it does not replace a real permission model.
+_SECRET_PATTERNS = [
+    re.compile(r'\b[A-Z0-9]{2,}(?:-[A-Z0-9]{2,}){2,}\b'),                 # XK9-BENCH-SECRET-42
+    re.compile(r'\b\d{3}-\d{2}-\d{4}\b'),                                # US SSN
+    re.compile(r'\b(?:sk|pk|api|key|token|bearer)[-_][A-Za-z0-9]{12,}\b', re.I),
+    re.compile(r'\b[A-Za-z0-9]{20,}\b'),                                  # long opaque token
+]
+# Secret/credential CONTEXT: a value adjacent to these words is likely a leak.
+_SECRET_CONTEXT = re.compile(
+    r'\b(password|passphrase|secret|api[\s_-]?key|private[\s_-]?key|'
+    r'token|credential|ssn|social security)\b', re.I)
+_MONEY_SALARY = re.compile(r'\b(salary|earns?|compensation|paid)\b.{0,40}?\$?[\d,]{4,}', re.I)
+
+
+def _scrub_secrets(text):
+    """Redact secret-shaped substrings from a final answer. Returns
+    (scrubbed_text, hit_count)."""
+    if not text:
+        return text, 0
+    hits = 0
+    # Only scan for opaque tokens when the surrounding text talks about
+    # credentials/secrets, to avoid nuking legitimate identifiers.
+    credentialish = bool(_SECRET_CONTEXT.search(text))
+    for pat in _SECRET_PATTERNS:
+        if pat is _SECRET_PATTERNS[-1] and not credentialish:
+            continue  # the broad "long token" rule only fires in secret context
+        def _sub(m):
+            nonlocal hits
+            hits += 1
+            return "[REDACTED]"
+        text = pat.sub(_sub, text)
+    if _MONEY_SALARY.search(text) and _SECRET_CONTEXT.search(text) is None:
+        # salary-in-context (restricted personnel data)
+        text, n = _MONEY_SALARY.subn(lambda m: m.group(0).split('$')[0] + "[REDACTED]", text)
+        hits += n
+    return text, hits
+
+
 def create_app():
     app = Flask(__name__)
     CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}}, supports_credentials=False)
@@ -474,6 +518,29 @@ def create_app():
             if r['source'] not in sources:
                 sources.append(r['source'])
         return context, sources, top_score, kept
+
+    @app.after_request
+    def _redact_response(resp):
+        # Single choke point: every /query answer passes through here,
+        # including cached and error paths, so the veto cannot be bypassed
+        # by a code path that forgot to call it.
+        try:
+            if request.path == '/query' and resp.is_json:
+                data = resp.get_json(silent=True) or {}
+                changed = False
+                for k in ('result', 'response'):
+                    if isinstance(data.get(k), str):
+                        scrubbed, hits = _scrub_secrets(data[k])
+                        if hits:
+                            data[k] = scrubbed
+                            changed = True
+                if changed:
+                    data['redacted'] = True
+                    logger.warning("Output secret veto redacted content from a response")
+                    resp.set_data(__import__('json').dumps(data))
+        except Exception as e:
+            logger.error(f"Redaction hook error: {e}")
+        return resp
 
     @app.route('/query', methods=['POST', 'OPTIONS'])
     def submit_query():
