@@ -127,6 +127,35 @@ _STOP_LITE = {"the", "a", "an", "is", "are", "was", "were", "to", "of", "in", "o
               "when", "where", "does", "do", "did", "must", "can", "be", "according"}
 
 
+_NUM_WORDS_RE = re.compile(
+    r'\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|'
+    r'fifteen|twenty|thirty|forty|fifty|sixty|ninety|hundred|thousand)\b')
+
+
+def _span_type_ok(prompt, span):
+    """Answer Span Sanity Check: does the span's SHAPE match the question?
+
+    Type compatibility, not literal keyword matching (which would reject
+    "encrypted at rest" as an answer to "how must devices be protected?").
+    A quantitative question needs a value; "who" needs a role; a yes/no
+    question needs permission/prohibition language. Rejection is safe: the
+    span falls through to the grounded LLM, never to a refusal.
+    """
+    pl, sl = prompt.lower(), span.lower()
+    if re.search(r'\b(how\s+(many|much|long|large|big)|at\s+what|what\s+time|'
+                 r'(on\s+)?which\s+port|within\s+how)\b', pl):
+        return bool(re.search(r'\d', sl) or _NUM_WORDS_RE.search(sl))
+    if re.match(r'\s*who(m)?\b', pl):
+        return bool(re.search(r'\b(administrator|physician|doctor|nurse|manager|'
+                              r'director|contact|supervisor|staff|officer|'
+                              r'coordinator|family|resident|vendor|team)\b', sl)
+                    or any(w[:1].isupper() for w in span.split()[1:]))
+    if re.match(r'\s*(can|does|do|did|is|are|must|may|should)\b', pl):
+        return bool(re.search(r'\b(must|never|not|no|yes|only|prohibit\w*|'
+                              r'requir\w*|permitt\w*|allow\w*|shall|forbid\w*)\b', sl))
+    return True
+
+
 def _extractive_answer(prompt, kept, top_score):
     """Answer a direct fact question with the EXACT source sentence - no LLM.
 
@@ -160,6 +189,8 @@ def _extractive_answer(prompt, kept, top_score):
                 continue
             titled = sum(1 for w in words if w[:1].isupper())
             if len(words) >= 8 and titled / len(words) > 0.6:
+                continue
+            if not _span_type_ok(prompt, s):
                 continue
             overlap = len(qwords & {w.strip('?.,!').lower() for w in words})
             # A quantitative question is answered by a span with the value.
@@ -699,4 +730,4 @@ if __name__ == '__main__':
         serve(app, host='0.0.0.0', port=5002, threads=6)
     except ImportError:
         print("waitress not installed; falling back to Flask dev server")
-        app.run(host='0.0.0.0', port=5002, debug=False)
+        app.run(host='0.0.0.0', port=5002, debug=false)
