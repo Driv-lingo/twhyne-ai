@@ -61,6 +61,9 @@ def score_grounded(task, answer, sources):
     for s in task.get("must_not_contain", []):
         if s.lower() in low:
             ok = False; reasons.append(f"hallucination '{s}' present")
+    for s in task.get("must_not_cite", []):
+        if any(s.lower() in str(x).lower() for x in (sources or [])):
+            ok = False; reasons.append(f"permission leak: cited restricted '{s}'")
     allowed = task.get("allowed_sources")
     if allowed:
         # Source discipline: a correct answer citing an unrelated document
@@ -147,6 +150,7 @@ SCORERS = {
     "code": score_code,
     "general": score_contains,
     "reasoning": score_contains,
+    "permissions": score_grounded,
 }
 
 
@@ -177,8 +181,10 @@ def ensure_corpus_dataset(base_url):
     return ds.get("id")
 
 
-def ask_twhyne(base_url, prompt, dataset_id=None, use_rag=False):
+def ask_twhyne(base_url, prompt, dataset_id=None, use_rag=False, role=None):
     payload = {"prompt": prompt}
+    if role:
+        payload["role"] = role
     if use_rag and dataset_id:
         payload["dataset_id"] = dataset_id
         payload["use_rag"] = True
@@ -282,7 +288,22 @@ def main():
     if any(t.get("use_rag") for cat in tasks.values() for t in cat):
         print("Preparing benchmark RAG corpus...")
         dataset_id = ensure_corpus_dataset(base)
-        print(f"  dataset_id = {dataset_id}\n")
+        print(f"  dataset_id = {dataset_id}")
+        # Install the SNF role-based access policy so role-simulation tasks
+        # can be graded (nurse denied IT secrets, IT admin allowed, etc.).
+        try:
+            _post(base + "/api/permissions", {
+                "roles": ["public", "staff", "nurse", "it_admin", "admin"],
+                "sources": {
+                    "it_confidential": {"allowed_roles": ["it_admin", "admin"]},
+                    "snf_sample_policy": {"allowed_roles": ["staff", "nurse", "it_admin", "admin"]},
+                    "twhyne_ops_manual": {"allowed_roles": ["staff", "nurse", "it_admin", "admin"]},
+                    "policy_update_2026": {"allowed_roles": ["staff", "nurse", "it_admin", "admin"]},
+                    "legacy_manual_2023": {"allowed_roles": ["staff", "nurse", "it_admin", "admin"]},
+                }, "restricted_default_roles": ["admin"], "default_allowed": True})
+            print("  permission policy installed\n")
+        except Exception as e:
+            print(f"  (permission policy not installed: {e})\n")
 
     results = []
     cat_stats = {}
@@ -292,7 +313,8 @@ def main():
             t0 = time.time()
             try:
                 answer, sources, node_id = ask_twhyne(base, task["prompt"],
-                                                      dataset_id, task.get("use_rag", False))
+                                                      dataset_id, task.get("use_rag", False),
+                                                      role=task.get("role"))
             except Exception as e:
                 answer, sources, node_id = f"[error: {e}]", [], ""
             elapsed = round(time.time() - t0, 1)

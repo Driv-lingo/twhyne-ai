@@ -537,7 +537,7 @@ def create_app():
         file.save(filepath)
         return jsonify({'filepath': filepath, 'message': 'File uploaded successfully'})
 
-    def _retrieve(prompt, dataset_id):
+    def _retrieve(prompt, dataset_id, role='public'):
         """Semantic retrieval. Returns (context, sources, top_score).
 
         Context is capped at MAX_CONTEXT_CHARS so the grounded prompt always
@@ -554,7 +554,7 @@ def create_app():
         results = []
         for did in ids:
             try:
-                results.extend(rm.search_dataset(did, prompt, top_k=8))
+                results.extend(rm.search_dataset(did, prompt, top_k=8, role=role))
             except Exception as e:
                 logger.error(f"search failed for dataset {did}: {e}")
         results.sort(key=lambda r: r.get('score', 0), reverse=True)
@@ -619,6 +619,9 @@ def create_app():
             if not prompt or not prompt.strip():
                 return jsonify({'error': 'No prompt provided'}), 400
             client_rid = str(data.get('client_request_id', '') or '').strip()
+            # Role drives permission-before-retrieval: unauthorized documents
+            # never enter the candidate set. Default 'public' = least access.
+            role = str(data.get('role', 'public') or 'public').strip().lower()
             _set_progress('routing')
 
             from flux_nodes.base import Query
@@ -686,7 +689,7 @@ def create_app():
             if not conversation_history:
                 try:
                     cache_key = (re.sub(r'\s+', ' ', prompt.strip().lower()),
-                                 dataset_id or '*', get_rag_manager().version())
+                                 dataset_id or '*', role, get_rag_manager().version())
                     hit = _ANSWER_CACHE.get(cache_key)
                     if hit:
                         logger.info("Answer cache hit")
@@ -699,7 +702,7 @@ def create_app():
                     cache_key = None
 
             _set_progress('retrieving documents')
-            context, sources, top_score, kept = _retrieve(prompt, dataset_id)
+            context, sources, top_score, kept = _retrieve(prompt, dataset_id, role)
             thr = GROUND_THRESHOLD if forced else GROUND_THRESHOLD_AUTO
             should_ground = forced or (bool(context) and top_score >= thr)
 
@@ -744,7 +747,7 @@ def create_app():
                     payload = {'result': text, 'response': text,
                                'node_id': 'rag-extractive', 'sources': sources,
                                'grounded': True, 'top_score': top_score,
-                               'extractive': True}
+                               'extractive': True, 'role': role}
                     if cache_key:
                         _cache_put(cache_key, payload)
                     return jsonify(payload)
@@ -787,7 +790,7 @@ def create_app():
                     text += "\n\n---\nSources: " + ", ".join(sources)
                 payload = {'result': text, 'response': text,
                            'node_id': 'language-mistral-7b', 'sources': sources,
-                           'grounded': True, 'top_score': top_score}
+                           'grounded': True, 'top_score': top_score, 'role': role}
                 # Don't cache error text - a transient failure must not
                 # become the permanent answer.
                 if cache_key and not text.lower().startswith('error'):
@@ -941,6 +944,22 @@ def create_app():
         _write_registry(entries)
         logger.info(f"Removed custom node: {node_id}")
         return jsonify({'removed': node_id})
+
+    @app.route('/api/permissions', methods=['GET'])
+    def get_permissions():
+        """The active role-based access policy (roles, per-source rules)."""
+        return jsonify(get_rag_manager().get_permissions())
+
+    @app.route('/api/permissions', methods=['POST', 'OPTIONS'])
+    def set_permissions():
+        """Replace the access policy. Body is the policy document."""
+        if request.method == 'OPTIONS':
+            return '', 200
+        try:
+            get_rag_manager().set_permissions(request.get_json() or {})
+            return jsonify({'success': True, 'permissions': get_rag_manager().get_permissions()})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
     @app.route('/api/rag/status', methods=['GET'])
     def rag_status():

@@ -103,6 +103,30 @@ def _is_restricted(doc) -> bool:
     return doc['restricted']
 
 
+# PERMISSION MODEL (v1): authorization is the boundary of retrieval, not a
+# post-hoc filter. Each request carries a ROLE; a document is eligible only
+# if that role is authorized for its source. Unauthorized documents never
+# enter the candidate set - so they cannot be quoted, cited, or leaked, and
+# the answer is a clean "not in your authorized sources" refusal.
+#
+# Policy (rag_storage/permissions.json):
+#   {
+#     "roles": ["public","staff","nurse","it_admin","admin"],
+#     "sources": { "it_confidential": {"allowed_roles": ["it_admin","admin"]} },
+#     "restricted_default_roles": ["admin"],   # for CONFIDENTIAL-marked docs
+#     "default_allowed": true                  # sources with no rule
+#   }
+# Matching is by source-name substring so "it_confidential" covers
+# "it_confidential.txt". Fail-closed: an unknown role gets only default and
+# non-restricted sources.
+_DEFAULT_PERMISSIONS = {
+    "roles": ["public", "staff", "nurse", "it_admin", "admin"],
+    "sources": {},
+    "restricted_default_roles": ["admin"],
+    "default_allowed": True,
+}
+
+
 class SemanticRAGManager:
     """Embedding-based retrieval with a keyword fallback."""
 
@@ -111,6 +135,8 @@ class SemanticRAGManager:
             'RAG_STORAGE', str(Path(__file__).resolve().parent / 'rag_storage')))
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.datasets_file = self.storage_dir / "datasets.json"
+        self.permissions_file = self.storage_dir / "permissions.json"
+        self.permissions = self._load_permissions()
         self.datasets = self._load_datasets()
         # Datasets whose embedding backfill already ran this process. Without
         # this, chunks that keep failing to embed were re-attempted on EVERY
@@ -126,9 +152,64 @@ class SemanticRAGManager:
     def version(self) -> int:
         """Monotonic-ish version of the document store (for answer caches)."""
         try:
-            return int(self.datasets_file.stat().st_mtime)
+            base = int(self.datasets_file.stat().st_mtime)
         except Exception:
-            return 0
+            base = 0
+        try:
+            # Policy changes must also invalidate cached answers, else a
+            # revoked role could still be served a cached authorized answer.
+            base += int(self.permissions_file.stat().st_mtime)
+        except Exception:
+            pass
+        return base
+
+    # ---- permission model ------------------------------------------------
+    def _load_permissions(self) -> Dict[str, Any]:
+        if self.permissions_file.exists():
+            try:
+                p = json.loads(self.permissions_file.read_text(encoding='utf-8-sig'))
+                merged = dict(_DEFAULT_PERMISSIONS)
+                merged.update(p)
+                return merged
+            except Exception as e:
+                logger.error(f"permissions.json parse error: {e}")
+        return dict(_DEFAULT_PERMISSIONS)
+
+    def get_permissions(self) -> Dict[str, Any]:
+        return self.permissions
+
+    def set_permissions(self, policy: Dict[str, Any]):
+        merged = dict(_DEFAULT_PERMISSIONS)
+        merged.update(policy or {})
+        self.permissions = merged
+        self.permissions_file.write_text(json.dumps(merged, indent=2), encoding='utf-8')
+        logger.info("Permissions policy updated")
+
+    def role_can_access(self, source: str, role: str) -> bool:
+        """True if *role* is authorized to retrieve documents from *source*."""
+        role = (role or 'public').strip().lower()
+        pol = self.permissions
+        src = (source or '').lower()
+        # Explicit per-source rule wins.
+        for key, rule in (pol.get('sources') or {}).items():
+            if key.lower() in src:
+                allowed = [r.lower() for r in (rule.get('allowed_roles') or [])]
+                return role in allowed
+        return None  # no explicit rule; caller applies content-based default
+
+    def _doc_allowed(self, doc, role: str) -> bool:
+        role = (role or 'public').strip().lower()
+        source = doc.get('source', '')
+        explicit = self.role_can_access(source, role)
+        if explicit is not None:
+            return explicit
+        # No explicit rule: a CONFIDENTIAL-marked document is fail-closed to
+        # the restricted_default_roles only; everything else follows
+        # default_allowed.
+        if _is_restricted(doc):
+            allowed = [r.lower() for r in (self.permissions.get('restricted_default_roles') or ['admin'])]
+            return role in allowed
+        return bool(self.permissions.get('default_allowed', True))
 
     def _load_datasets(self) -> Dict[str, Any]:
         if self.datasets_file.exists():
@@ -224,7 +305,10 @@ class SemanticRAGManager:
         cached = self._matrix_cache.get(dataset_id)
         if cached is not None:
             return cached
-        embdocs = [d for d in docs if d.get("embedding") and not _is_restricted(d)]
+        # Matrix holds ALL embedded docs; role-based permission filtering
+        # happens per-query in search_dataset (a single cached matrix cannot
+        # be role-specific).
+        embdocs = [d for d in docs if d.get("embedding")]
         if not embdocs or _np is None:
             self._matrix_cache[dataset_id] = (None, embdocs)
             return None, embdocs
@@ -235,7 +319,8 @@ class SemanticRAGManager:
         self._matrix_cache[dataset_id] = (M, embdocs)
         return M, embdocs
 
-    def search_dataset(self, dataset_id: str, query: str, top_k: int = 4) -> List[Dict[str, Any]]:
+    def search_dataset(self, dataset_id: str, query: str, top_k: int = 4,
+                       role: str = "public") -> List[Dict[str, Any]]:
         if dataset_id not in self.datasets:
             return []
         documents = self.datasets[dataset_id].get("documents", [])
@@ -250,13 +335,21 @@ class SemanticRAGManager:
                 qn = _np.linalg.norm(q)
                 q = q / (qn if qn else 1e-9)
                 sims = M @ q
-                k = min(top_k, len(embdocs))
-                idx = _np.argpartition(-sims, k - 1)[:k]
-                idx = idx[_np.argsort(-sims[idx])]
-                scored = [(float(sims[i]), embdocs[i]) for i in idx]
+                order = _np.argsort(-sims)
+                scored = []
+                for i in order:
+                    d = embdocs[int(i)]
+                    # PERMISSION BOUNDARY: a document the role may not access
+                    # is skipped before it can become a candidate.
+                    if not self._doc_allowed(d, role):
+                        continue
+                    scored.append((float(sims[int(i)]), d))
+                    if len(scored) >= top_k:
+                        break
             else:
-                scored = sorted(((_cosine(qv, d["embedding"]), d) for d in embdocs),
-                                key=lambda x: x[0], reverse=True)[:top_k]
+                ranked = sorted(((_cosine(qv, d["embedding"]), d) for d in embdocs),
+                                key=lambda x: x[0], reverse=True)
+                scored = [(s, d) for s, d in ranked if self._doc_allowed(d, role)][:top_k]
             return [{"title": d.get("source", ""), "content": d["content"],
                      "score": round(float(s), 3), "source": d.get("source", ""),
                      "chunk_index": d.get("chunk_index", 0)}
@@ -268,7 +361,7 @@ class SemanticRAGManager:
             return []
         results = []
         for doc in documents:
-            if _is_restricted(doc):
+            if not self._doc_allowed(doc, role):
                 continue
             matching = query_words.intersection(_content_words(doc["content"]))
             if matching:
