@@ -323,6 +323,22 @@ def create_app():
             # write a BOM, which plain utf-8 JSON parsing rejects.
             for entry in _json.loads(registry_file.read_text(encoding='utf-8-sig')):
                 try:
+                    # role "code": the model gets the full VERIFIED CodeNode
+                    # pipeline (execute-before-answer, retry on failure,
+                    # honest labels) instead of raw generation - a raw node
+                    # once displayed self-tests it never executed, including
+                    # a false palindrome assert.
+                    if entry.get('role') == 'code':
+                        n = CodeNode(
+                            node_id=entry['node_id'],
+                            name=entry.get('name', entry['node_id']),
+                            description=entry.get('description', ''),
+                            model_path=models_dir / entry['model_file'],
+                        )
+                        n.keywords = entry.get('keywords', [])
+                        node_registry.register_node(n)
+                        logger.info(f"Registered custom VERIFIED code node: {n.name} ({n.node_id})")
+                        continue
                     n = CustomLLMNode(
                         node_id=entry['node_id'],
                         name=entry.get('name', entry['node_id']),
@@ -527,7 +543,11 @@ def create_app():
                     hit = _ANSWER_CACHE.get(cache_key)
                     if hit:
                         logger.info("Answer cache hit")
-                        return jsonify({**hit, 'cached': True})
+                        # Honest labeling: a cached answer must be
+                        # distinguishable from a fresh one ("+cached"
+                        # suffix), not silently identical.
+                        return jsonify({**hit, 'cached': True,
+                                        'node_id': hit.get('node_id', '') + '+cached'})
                 except Exception:
                     cache_key = None
 
