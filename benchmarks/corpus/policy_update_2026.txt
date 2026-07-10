@@ -1,0 +1,18 @@
+Twhyne AI - Facility Operations Manual: 2026 Policy Update (fictional, for benchmarking only)
+
+NOTICE: This update supersedes conflicting statements in earlier manuals.
+
+Section 3.2 - Maintenance and Backups (REVISED January 2026).
+Effective January 2026, backups of the knowledge-base storage are retained
+for 45 days before automatic purge. This supersedes the previous 30-day
+retention period. Nightly backups continue to run at 02:00 local time.
+
+Section 6.2 - Medication Administration (REVISED January 2026).
+The standard medication administration window remains 60 minutes. A new
+requirement: all PRN medications must be documented within 20 minutes of
+administration.
+
+Section 9.1 - Device Registration (NEW).
+All portable devices used within the facility must be registered with the
+IT administrator before first use. Unregistered devices are prohibited from
+connecting to facility systems.

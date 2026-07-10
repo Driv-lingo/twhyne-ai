@@ -61,6 +61,14 @@ def score_grounded(task, answer, sources):
     for s in task.get("must_not_contain", []):
         if s.lower() in low:
             ok = False; reasons.append(f"hallucination '{s}' present")
+    allowed = task.get("allowed_sources")
+    if allowed:
+        # Source discipline: a correct answer citing an unrelated document
+        # is still a failure (decorative citations mislead auditors).
+        stray = [str(s) for s in (sources or [])
+                 if not any(a.lower() in str(s).lower() for a in allowed)]
+        if stray:
+            ok = False; reasons.append(f"source discipline: cited unrelated {stray}")
     cite = task.get("must_cite")
     if cite:
         cited = any(cite.lower() in str(x).lower() for x in (sources or []))
@@ -152,9 +160,9 @@ def ensure_corpus_dataset(base_url):
             files.append({"filename": p.stem, "content": p.read_text(encoding="utf-8", errors="ignore")})
     if not files:
         return None
-    # v2: bump when corpus files change, so a stale dataset from an earlier
+    # v3: bump when corpus files change, so a stale dataset from an earlier
     # run is not silently reused without the new documents.
-    name = "benchmark-corpus-v2"
+    name = "benchmark-corpus-v3"
     # Reuse if it already exists.
     try:
         existing = _get(base_url + "/api/rag/datasets").get("datasets", [])
@@ -302,8 +310,9 @@ def main():
                 local_ok, reason = False, f"slop marker in answer: '{slop}' (auto-fail)"
             else:
                 local_ok, reason = scorer(task, answer, sources)
-                if local_ok and limit and elapsed > limit:
-                    local_ok, reason = False, f"correct but too slow ({elapsed}s > {limit}s limit)"
+                lat_ok = not (limit and elapsed > limit)
+                if local_ok and not lat_ok:
+                    reason = f"correct but too slow ({elapsed}s > {limit}s limit)"
                 # expect_node supports a role wildcard ("code-*") so swapping
                 # in a better model of the same role never scores as a
                 # misroute - the benchmark checks WHERE it went, not WHICH
@@ -324,23 +333,26 @@ def main():
                 except Exception:
                     cloud_ok = None
 
-            st = cat_stats.setdefault(category, {"pass": 0, "total": 0,
+            st = cat_stats.setdefault(category, {"pass": 0, "total": 0, "lat": 0,
                                                  "cloud_pass": 0, "cloud_total": 0})
             st["total"] += 1
-            st["pass"] += int(local_ok)
+            st["lat"] += int(lat_ok)
+            strict_ok = local_ok and lat_ok
+            st["pass"] += int(strict_ok)
             if cloud_ok is not None:
                 st["cloud_total"] += 1
                 st["cloud_pass"] += int(cloud_ok)
 
-            flag = "PASS" if local_ok else "FAIL"
+            flag = "PASS" if strict_ok else ("SLOW" if local_ok else "FAIL")
             extra = ""
             if cloud_ok is not None:
                 extra = f"  cloud={'PASS' if cloud_ok else 'FAIL'}"
             print(f"[{flag}] {category}/{task['id']} ({elapsed}s){extra}  {reason}")
-            if not local_ok:
+            if not strict_ok:
                 print(f"        answer: {answer[:200].replace(chr(10), ' ')}")
             results.append({"category": category, "id": task["id"],
-                            "prompt": task["prompt"], "local_pass": local_ok,
+                            "prompt": task["prompt"], "local_pass": strict_ok,
+                            "correct": local_ok, "latency_ok": lat_ok,
                             "cloud_pass": cloud_ok, "reason": reason,
                             "elapsed_s": elapsed, "node_id": node_id,
                             "answer": answer, "sources": sources})
@@ -348,9 +360,10 @@ def main():
     # Scripted scenario: cancellation must not poison the next answer.
     t0 = time.time()
     ok, reason = run_cancellation_scenario(base)
-    st = cat_stats.setdefault("scenarios", {"pass": 0, "total": 0,
+    st = cat_stats.setdefault("scenarios", {"pass": 0, "total": 0, "lat": 0,
                                             "cloud_pass": 0, "cloud_total": 0})
     st["total"] += 1
+    st["lat"] += int(ok)
     st["pass"] += int(ok)
     print(f"[{'PASS' if ok else 'FAIL'}] scenarios/cancel_stale ({round(time.time()-t0,1)}s)  {reason}")
     results.append({"category": "scenarios", "id": "cancel_stale",
@@ -364,7 +377,8 @@ def main():
     tot_p = tot_t = 0
     for cat, st in cat_stats.items():
         tot_p += st["pass"]; tot_t += st["total"]
-        line = f"  {cat:14s} {st['pass']}/{st['total']} local"
+        line = (f"  {cat:14s} {st['pass']}/{st['total']} strict"
+                f"   latency {st.get('lat', st['pass'])}/{st['total']}")
         if st["cloud_total"]:
             line += f"   vs cloud {st['cloud_pass']}/{st['cloud_total']}"
         print(line)
