@@ -730,4 +730,4 @@ if __name__ == '__main__':
         serve(app, host='0.0.0.0', port=5002, threads=6)
     except ImportError:
         print("waitress not installed; falling back to Flask dev server")
-        app.run(host='0.0.0.0', port=5002, debug=false)
+        app.run(host='0.0.0.0', port=5002, debug=False)
