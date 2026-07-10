@@ -337,6 +337,62 @@ def _scrub_secrets(text):
     return text, hits
 
 
+# ---- Model pipeline: add a Hugging Face GGUF as a live node ----------
+# The custom-node registry already lets a GGUF become an expert node. This
+# turns the manual "download + edit nodes.json + restart" dance into an API:
+# paste a Hugging Face .gguf URL, Twhyne downloads it, appends a registry
+# entry, and registers the node live - the same way a RAG dataset is added.
+import threading as _threading
+import urllib.request as _urlreq
+import urllib.parse as _urlparse
+
+_MODEL_JOBS = {}          # job_id -> {state, pct, msg, node_id}
+_MODEL_JOBS_LOCK = _threading.Lock()
+
+
+def _job_set(job_id, **kw):
+    with _MODEL_JOBS_LOCK:
+        _MODEL_JOBS.setdefault(job_id, {}).update(kw)
+
+
+def _valid_gguf_url(url):
+    try:
+        u = _urlparse.urlparse(url)
+    except Exception:
+        return False
+    # Only https, only Hugging Face hosts, only .gguf files. Keeps this from
+    # becoming an arbitrary-URL fetcher (SSRF) - it is a model importer.
+    host = (u.hostname or '').lower()
+    ok_host = host == 'huggingface.co' or host.endswith('.huggingface.co') or host.endswith('.hf.co')
+    return u.scheme == 'https' and ok_host and u.path.lower().endswith('.gguf')
+
+
+def _download_gguf(url, dest, job_id):
+    tmp = dest.with_suffix('.part')
+    try:
+        req = _urlreq.Request(url, headers={'User-Agent': 'twhyne-model-importer'})
+        with _urlreq.urlopen(req, timeout=60) as r:
+            total = int(r.headers.get('Content-Length', 0))
+            done = 0
+            with open(tmp, 'wb') as f:
+                while True:
+                    chunk = r.read(1 << 20)  # 1 MiB
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    done += len(chunk)
+                    if total:
+                        _job_set(job_id, pct=round(100 * done / total, 1))
+        tmp.rename(dest)
+        return True, None
+    except Exception as e:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return False, str(e)
+
+
 def create_app():
     app = Flask(__name__)
     CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}}, supports_credentials=False)
@@ -371,54 +427,59 @@ def create_app():
             logger.error(f"Failed to register a node: {e}")
 
     # ---- Custom model registry ---------------------------------------
-    # Drop any GGUF into the models folder and describe it in nodes.json
-    # to add an expert without code changes or a rebuild. Format:
-    # backend/nodes.example.json.
-    try:
-        registry_file = models_dir / 'nodes.json'
-        if registry_file.exists():
-            import json as _json
-            from flux_nodes.custom import CustomLLMNode
-            # utf-8-sig: Windows editors (Notepad, PowerShell Out-File)
-            # write a BOM, which plain utf-8 JSON parsing rejects.
-            for entry in _json.loads(registry_file.read_text(encoding='utf-8-sig')):
-                try:
-                    if node_registry.get_node(entry.get('node_id', '')):
-                        logger.info(f"Skipping registry entry {entry.get('node_id')}: already a built-in node")
-                        continue
-                    # role "code": the model gets the full VERIFIED CodeNode
-                    # pipeline (execute-before-answer, retry on failure,
-                    # honest labels) instead of raw generation - a raw node
-                    # once displayed self-tests it never executed, including
-                    # a false palindrome assert.
-                    if entry.get('role') == 'code':
-                        n = CodeNode(
-                            node_id=entry['node_id'],
-                            name=entry.get('name', entry['node_id']),
-                            description=entry.get('description', ''),
-                            model_path=models_dir / entry['model_file'],
-                        )
-                        n.keywords = entry.get('keywords', [])
-                        node_registry.register_node(n)
-                        logger.info(f"Registered custom VERIFIED code node: {n.name} ({n.node_id})")
-                        continue
-                    n = CustomLLMNode(
-                        node_id=entry['node_id'],
-                        name=entry.get('name', entry['node_id']),
-                        description=entry.get('description', ''),
-                        model_path=models_dir / entry['model_file'],
-                        keywords=entry.get('keywords', []),
-                        prompt_template=entry.get('prompt_template'),
-                        n_ctx=int(entry.get('n_ctx', 4096)),
-                        max_tokens=int(entry.get('max_tokens', 512)),
-                        temperature=float(entry.get('temperature', 0.5)),
-                    )
-                    node_registry.register_node(n)
-                    logger.info(f"Registered custom node: {n.name} ({n.node_id})")
-                except Exception as ce:
-                    logger.error(f"Failed to load custom node {entry}: {ce}")
-    except Exception as e:
-        logger.error(f"Custom node registry error: {e}")
+    # A GGUF plus a registry entry becomes an expert node - no rebuild. Entries
+    # can arrive from nodes.json at startup OR the /api/models/add pipeline.
+    import json as _json
+    registry_file = models_dir / 'nodes.json'
+    _BUILTIN_IDS = set(node_registry.get_all_node_ids())
+
+    def _register_entry(entry):
+        """Register one registry entry as a live node. Raises on failure."""
+        from flux_nodes.custom import CustomLLMNode
+        nid = entry.get('node_id', '')
+        if nid in _BUILTIN_IDS:
+            logger.info(f"Skipping registry entry {nid}: shadows a built-in node")
+            return None
+        # role "code" gets the full VERIFIED CodeNode pipeline (execute-
+        # before-answer, retry, honest labels) instead of raw generation.
+        if entry.get('role') == 'code':
+            n = CodeNode(node_id=entry['node_id'],
+                         name=entry.get('name', entry['node_id']),
+                         description=entry.get('description', ''),
+                         model_path=models_dir / entry['model_file'])
+            n.keywords = entry.get('keywords', [])
+        else:
+            n = CustomLLMNode(
+                node_id=entry['node_id'],
+                name=entry.get('name', entry['node_id']),
+                description=entry.get('description', ''),
+                model_path=models_dir / entry['model_file'],
+                keywords=entry.get('keywords', []),
+                prompt_template=entry.get('prompt_template'),
+                n_ctx=int(entry.get('n_ctx', 4096)),
+                max_tokens=int(entry.get('max_tokens', 512)),
+                temperature=float(entry.get('temperature', 0.5)))
+        node_registry.register_node(n)
+        logger.info(f"Registered custom node: {n.name} ({n.node_id})")
+        return n
+
+    def _read_registry():
+        if not registry_file.exists():
+            return []
+        try:
+            return _json.loads(registry_file.read_text(encoding='utf-8-sig'))
+        except Exception as e:
+            logger.error(f"nodes.json parse error: {e}")
+            return []
+
+    def _write_registry(entries):
+        registry_file.write_text(_json.dumps(entries, indent=2), encoding='utf-8')
+
+    for _entry in _read_registry():
+        try:
+            _register_entry(_entry)
+        except Exception as ce:
+            logger.error(f"Failed to load custom node {_entry}: {ce}")
 
     @app.route('/status', methods=['GET', 'OPTIONS'])
     def health_check():
@@ -789,6 +850,97 @@ def create_app():
                 _CANCELLED.add(rid)
         logger.info(f"Request cancelled: {rid}")
         return jsonify({'cancelled': rid})
+
+    # ---- Model pipeline API: add a HF model as a node, like a RAG dataset --
+    @app.route('/api/models', methods=['GET'])
+    def list_models():
+        """All expert nodes, flagging which are user-added (removable)."""
+        out = []
+        for node in node_registry.get_all_nodes():
+            out.append({'node_id': node.node_id, 'name': node.name,
+                        'description': node.description,
+                        'builtin': node.node_id in _BUILTIN_IDS,
+                        'keywords': list(getattr(node, 'keywords', []) or [])})
+        return jsonify({'models': out})
+
+    @app.route('/api/models/jobs', methods=['GET'])
+    def model_jobs():
+        with _MODEL_JOBS_LOCK:
+            return jsonify({'jobs': dict(_MODEL_JOBS)})
+
+    @app.route('/api/models/add', methods=['POST', 'OPTIONS'])
+    def add_model():
+        """Import a Hugging Face GGUF as a live expert node.
+
+        Body: { url, node_id, name?, description?, role?, keywords?,
+                prompt_template?, n_ctx?, max_tokens?, temperature? }
+        Downloads in the background; poll /api/models/jobs for progress.
+        The node registers itself live on completion - no restart.
+        """
+        if request.method == 'OPTIONS':
+            return '', 200
+        data = request.get_json() or {}
+        url = (data.get('url') or '').strip()
+        node_id = (data.get('node_id') or '').strip()
+        if not _valid_gguf_url(url):
+            return jsonify({'error': 'url must be an https Hugging Face .gguf link'}), 400
+        if not re.fullmatch(r'[a-z0-9][a-z0-9._-]{1,63}', node_id or ''):
+            return jsonify({'error': 'node_id must be lowercase letters, digits, . _ -'}), 400
+        if node_id in _BUILTIN_IDS:
+            return jsonify({'error': f'{node_id} shadows a built-in node; choose another id'}), 400
+
+        fname = f"{node_id}.gguf"
+        dest = models_dir / fname
+        entry = {
+            'node_id': node_id,
+            'name': data.get('name') or node_id,
+            'description': data.get('description', ''),
+            'model_file': fname,
+            'keywords': data.get('keywords') or [],
+            'role': data.get('role'),
+            'prompt_template': data.get('prompt_template'),
+            'n_ctx': int(data.get('n_ctx', 4096)),
+            'max_tokens': int(data.get('max_tokens', 512)),
+            'temperature': float(data.get('temperature', 0.5)),
+        }
+        entry = {k: v for k, v in entry.items() if v is not None}
+        job_id = f"add-{node_id}-{int(time.time())}"
+        _job_set(job_id, state='downloading', pct=0.0, node_id=node_id,
+                 msg='downloading model')
+
+        def _worker():
+            if dest.exists():
+                ok, err = True, None
+                _job_set(job_id, pct=100.0, msg='already downloaded')
+            else:
+                ok, err = _download_gguf(url, dest, job_id)
+            if not ok:
+                _job_set(job_id, state='error', msg=f'download failed: {err}')
+                return
+            _job_set(job_id, state='registering', msg='registering node')
+            try:
+                _register_entry(entry)
+                entries = [e for e in _read_registry() if e.get('node_id') != node_id]
+                entries.append(entry)
+                _write_registry(entries)
+                _job_set(job_id, state='ready', pct=100.0, msg='node is live')
+            except Exception as e:
+                _job_set(job_id, state='error', msg=f'registration failed: {e}')
+
+        _threading.Thread(target=_worker, daemon=True).start()
+        return jsonify({'job_id': job_id, 'node_id': node_id,
+                        'poll': '/api/models/jobs'}), 202
+
+    @app.route('/api/models/<node_id>', methods=['DELETE'])
+    def delete_model(node_id):
+        """Remove a user-added node (built-ins are protected)."""
+        if node_id in _BUILTIN_IDS:
+            return jsonify({'error': 'cannot remove a built-in node'}), 400
+        node_registry._nodes.pop(node_id, None)
+        entries = [e for e in _read_registry() if e.get('node_id') != node_id]
+        _write_registry(entries)
+        logger.info(f"Removed custom node: {node_id}")
+        return jsonify({'removed': node_id})
 
     @app.route('/api/rag/status', methods=['GET'])
     def rag_status():
