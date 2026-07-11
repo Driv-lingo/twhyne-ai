@@ -502,6 +502,108 @@ def _escalate_alert(alert):
     return sent
 
 
+# ---- License heartbeat: periodic re-validation + safety counters -----
+# The container validates its key once at startup; this loop re-validates
+# every TWHYNE_HEARTBEAT_S (default 6h) so a revoked key actually bites,
+# and ships SAFETY COUNTERS with the ping: number of redaction events,
+# permission refusals, audit-chain status, record count, version. Counters
+# only — prompts and documents never leave the machine (they are referenced
+# by hash in the local ledger). This is the disclosed mechanism by which
+# Twhyne can spot abusive deployments. Disable with TWHYNE_HEARTBEAT_S=0.
+
+_HEARTBEAT_STATE = {'last_ts': 0.0, 'license_valid': True, 'message': ''}
+
+
+def _audit_counters_since(ts):
+    """(redactions, refusals, records) from ledger entries newer than ts."""
+    import json as _json
+    red = ref = total = 0
+    try:
+        if _AUDIT_PATH.exists():
+            with open(_AUDIT_PATH) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = _json.loads(line)
+                    except Exception:
+                        continue
+                    if float(rec.get('ts') or 0) <= ts:
+                        continue
+                    total += 1
+                    if rec.get('redacted'):
+                        red += 1
+                    if str(rec.get('verdict') or '').lower() == 'refused':
+                        ref += 1
+    except Exception as e:
+        logger.error(f"heartbeat counter scan failed: {e}")
+    return red, ref, total
+
+
+def _license_heartbeat_once():
+    """One validation ping with safety counters. Never raises."""
+    key = os.environ.get('SNF_LICENSE_KEY', '').strip()
+    api = os.environ.get('LICENSE_API_URL', 'https://twhyne.com').rstrip('/')
+    if not key:
+        return
+    import json as _json
+    red, ref, total = _audit_counters_since(_HEARTBEAT_STATE['last_ts'])
+    chain_ok, _, _ = _audit_verify()
+    body = _json.dumps({
+        'license_key': key,
+        'telemetry': {
+            'redactions': red,
+            'refusals': ref,
+            'tamper': not chain_ok,
+            'records': total,
+            'version': os.environ.get('TWHYNE_VERSION', 'dev'),
+        },
+    }).encode()
+    try:
+        req = _urlreq.Request(api + '/api/validate', data=body,
+                              headers={'Content-Type': 'application/json'})
+        with _urlreq.urlopen(req, timeout=10) as resp:
+            payload = _json.loads(resp.read().decode() or '{}')
+        _HEARTBEAT_STATE['last_ts'] = time.time()
+        if not payload.get('valid', True):
+            _HEARTBEAT_STATE['license_valid'] = False
+            _HEARTBEAT_STATE['message'] = payload.get('message', 'invalid')
+            logger.error(f"LICENSE INVALID: {payload.get('message')} — "
+                         f"contact twhyne.com; this deployment is out of terms.")
+            _escalate_alert({
+                'severity': 'high', 'type': 'license-invalid',
+                'what': f"License check failed: {payload.get('message')}.",
+                'why': 'The key was revoked or expired. The system keeps '
+                       'serving to avoid disrupting care/operations, but the '
+                       'deployment is no longer licensed.',
+                'subject': key[-9:],
+            })
+        else:
+            _HEARTBEAT_STATE['license_valid'] = True
+            _HEARTBEAT_STATE['message'] = 'ok'
+    except Exception as e:
+        # Offline is fine — local-first must keep working without internet.
+        logger.info(f"license heartbeat skipped (offline?): {e}")
+
+
+def _start_license_heartbeat():
+    interval = int(os.environ.get('TWHYNE_HEARTBEAT_S', '21600') or 0)
+    if interval <= 0 or not os.environ.get('SNF_LICENSE_KEY', '').strip():
+        return
+    def loop():
+        # First ping shortly after boot so counters/revocations surface fast,
+        # then every interval.
+        time.sleep(60)
+        while True:
+            _license_heartbeat_once()
+            time.sleep(interval)
+    t = __import__('threading').Thread(target=loop, daemon=True,
+                                       name='license-heartbeat')
+    t.start()
+    logger.info(f"license heartbeat every {interval}s (counters only)")
+
+
 # ---- Model pipeline: add a Hugging Face GGUF as a live node ----------
 # The custom-node registry already lets a GGUF become an expert node. This
 # turns the manual "download + edit nodes.json + restart" dance into an API:
@@ -1354,6 +1456,7 @@ if __name__ == '__main__':
     print("Starting Twhyne AI backend on :5002")
     print("=" * 60)
     app = create_app()
+    _start_license_heartbeat()
     try:
         # Production WSGI server. A few threads keep /status, /progress and
         # /cancel responsive while the inference lock serializes generation.
