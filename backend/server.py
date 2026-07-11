@@ -424,6 +424,84 @@ def _audit_verify():
     return True, n, None
 
 
+# ---- Alert escalation: notify a person, not just a log ---------------
+# Local-first means nothing leaves by default; escalation only goes where
+# the operator explicitly points it:
+#   TWHYNE_ALERT_WEBHOOK  https URL that receives a JSON POST per alert
+#                         (generic; works with Slack/Teams incoming webhooks)
+#   TWHYNE_ALERT_EMAIL    address to notify via local SMTP
+#   TWHYNE_SMTP_HOST/PORT SMTP relay for the above (default localhost:25)
+# Alerts are throttled (same type+subject at most once per hour) so a
+# probing loop pages a human once, not five hundred times.
+
+_ESCALATE_LOCK = __import__('threading').Lock()
+_ESCALATE_LAST = {}  # (type, subject) -> monotonic seconds of last send
+_ESCALATE_THROTTLE_S = int(os.environ.get('TWHYNE_ALERT_THROTTLE_S', '3600') or 3600)
+
+
+def _escalate_alert(alert):
+    """Push one alert to the configured webhook/email. Never raises.
+
+    `alert` is the same shape the admin console shows: severity, type,
+    what, why, subject. Content is metadata only — prompts are referenced
+    by hash in the audit ledger, never included here.
+    """
+    webhook = os.environ.get('TWHYNE_ALERT_WEBHOOK', '').strip()
+    email_to = os.environ.get('TWHYNE_ALERT_EMAIL', '').strip()
+    if not webhook and not email_to:
+        return False
+    key = (alert.get('type'), alert.get('subject'))
+    now = time.monotonic()
+    with _ESCALATE_LOCK:
+        last = _ESCALATE_LAST.get(key)
+        if last is not None and now - last < _ESCALATE_THROTTLE_S:
+            return False
+        _ESCALATE_LAST[key] = now
+    sent = False
+    if webhook:
+        try:
+            import json as _json
+            body = _json.dumps({
+                'source': 'twhyne',
+                'severity': alert.get('severity'),
+                'type': alert.get('type'),
+                'what': alert.get('what'),
+                'why': alert.get('why'),
+                'subject': alert.get('subject'),
+                # Slack/Teams render `text`; other receivers use the fields.
+                'text': f"[TWHYNE {str(alert.get('severity','')).upper()}] "
+                        f"{alert.get('what')} — {alert.get('why')}",
+            }).encode()
+            req = _urlreq.Request(webhook, data=body,
+                                  headers={'Content-Type': 'application/json'})
+            _urlreq.urlopen(req, timeout=6)
+            sent = True
+        except Exception as e:
+            logger.error(f"alert webhook failed: {e}")
+    if email_to:
+        try:
+            import smtplib
+            from email.message import EmailMessage
+            msg = EmailMessage()
+            msg['Subject'] = (f"[Twhyne {str(alert.get('severity','')).upper()}] "
+                              f"{alert.get('type')}")
+            msg['From'] = os.environ.get('TWHYNE_ALERT_FROM', 'twhyne@localhost')
+            msg['To'] = email_to
+            msg.set_content(f"{alert.get('what')}\n\nWhy this matters:\n"
+                            f"{alert.get('why')}\n\nSubject: {alert.get('subject')}\n"
+                            f"Review the admin alerts feed for detail.")
+            host = os.environ.get('TWHYNE_SMTP_HOST', 'localhost')
+            port = int(os.environ.get('TWHYNE_SMTP_PORT', '25') or 25)
+            with smtplib.SMTP(host, port, timeout=8) as s:
+                s.send_message(msg)
+            sent = True
+        except Exception as e:
+            logger.error(f"alert email failed: {e}")
+    if sent:
+        logger.warning(f"escalated alert: {alert.get('type')} ({alert.get('severity')})")
+    return sent
+
+
 # ---- Model pipeline: add a Hugging Face GGUF as a live node ----------
 # The custom-node registry already lets a GGUF become an expert node. This
 # turns the manual "download + edit nodes.json + restart" dance into an API:
@@ -686,6 +764,15 @@ def create_app():
                     data['redacted'] = True
                     logger.warning("Output secret veto redacted content from a response")
                     resp.set_data(__import__('json').dumps(data))
+                    _escalate_alert({
+                        'severity': 'high', 'type': 'output-redaction',
+                        'what': f"Output redaction fired for role "
+                                f"'{data.get('role')}'.",
+                        'why': 'A response contained a value matching a secret '
+                               'pattern and was scrubbed before returning. Review '
+                               'whether the query tried to elicit a credential.',
+                        'subject': data.get('role'),
+                    })
                 # One tamper-evident audit record per answered query.
                 verdict = ('refused' if isinstance(data.get('response'), str)
                            and ('do not have' in data['response'].lower()
@@ -1073,6 +1160,14 @@ def create_app():
     def audit_verify():
         """Prove the audit chain has not been tampered with."""
         ok, count, broken = _audit_verify()
+        if not ok:
+            _escalate_alert({
+                'severity': 'high', 'type': 'audit-tamper',
+                'what': f'The audit ledger fails verification at record {broken}.',
+                'why': 'A broken hash chain means a past record was altered or '
+                       'removed. Preserve the file and investigate disk access.',
+                'subject': None,
+            })
         return jsonify({'chain_intact': ok, 'records': count, 'broken_at': broken})
 
     @app.route('/api/admin/alerts', methods=['GET'])
@@ -1181,6 +1276,11 @@ def create_app():
 
         rank = {'high': 0, 'medium': 1, 'low': 2}
         alerts.sort(key=lambda a: rank.get(a.get('severity'), 3))
+        # Escalate anything high/medium to the configured person/channel.
+        # The per-(type,subject) throttle keeps a repeated scan quiet.
+        for a in alerts:
+            if a.get('severity') in ('high', 'medium'):
+                _escalate_alert(a)
         return jsonify({'success': True, 'alerts': alerts, 'count': len(alerts),
                         'records_scanned': len(recs), 'chain_intact': ok})
 

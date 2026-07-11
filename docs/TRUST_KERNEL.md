@@ -27,6 +27,7 @@ identity/role → authorized source set → retrieve only allowed docs/chunks
 | 8  Signed identity (verify *who* the role belongs to) | **roadmap** |
 | 9  Tool / action policy engine | **roadmap** |
 | 10 Adversarial governance benchmark (312 tasks) | **done** |
+| 10b Security alerts + human escalation (webhook/email, throttled, opt-in) | **done** |
 | 11 External security review / certification | **roadmap** |
 
 ## What "done" honestly means here
