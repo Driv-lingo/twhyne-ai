@@ -265,6 +265,25 @@ code{background:#0e0b16;padding:2px 6px;border-radius:4px;font-size:12px;color:v
 <div class="row"><button class="ghost" onclick="loadPolicy()">Reload</button><button onclick="savePolicy()">Save policy</button></div>
 <div class="msg" id="pmsg"></div></div>
 
+<div class="card"><h2>Models &amp; nodes</h2>
+<div class="sub" style="margin:0 0 10px">Import a Hugging Face GGUF as a live expert node, set which roles may invoke it, and manage existing nodes. Imports register live &mdash; no restart.</div>
+<div class="row">
+<div><label>Hugging Face .gguf URL</label><input id="murl" placeholder="https://huggingface.co/&hellip;/model.Q4_K_M.gguf"></div>
+</div>
+<div class="row">
+<div><label>Node id (lowercase)</label><input id="mid" placeholder="hf-medical-7b"></div>
+<div><label>Display name</label><input id="mname" placeholder="Medical QA 7B"></div>
+</div>
+<div class="row">
+<div><label>Keywords (comma-sep, for routing)</label><input id="mkw" placeholder="medical, clinical, diagnosis"></div>
+<div><label>Allowed roles (comma-sep; blank = all)</label><input id="mroles" placeholder="nurse, admin"></div>
+</div>
+<button onclick="addModel()">Import model</button>
+<div class="msg" id="mmsg"></div>
+<div id="jobs" style="margin-top:12px"></div>
+<div id="nodelist" style="margin-top:14px"></div>
+</div>
+
 <div class="card"><h2>Mint identity token</h2>
 <div class="sub" style="margin:0 0 6px">A signed token binds a user to a role. Send it as <code>Authorization: Bearer &lt;token&gt;</code>; it cannot be overridden by a request body.</div>
 <div class="row">
@@ -296,7 +315,47 @@ if(r.ok&&d.token){msg('imsg','Token issued for '+subject+' ('+role+'), valid '+(
 document.getElementById('tok').textContent=d.token;}
 else{msg('imsg',d.error||'Failed','err');document.getElementById('tok').textContent='';}}
 catch(e){msg('imsg','Error: '+e,'err');}}
-loadPolicy();
+// ---- models & nodes ----
+function csv(id){return document.getElementById(id).value.split(',').map(function(s){return s.trim();}).filter(Boolean);}
+async function addModel(){
+var url=document.getElementById('murl').value.trim();var nid=document.getElementById('mid').value.trim();
+if(!url||!nid){msg('mmsg','URL and node id are required.','err');return;}
+var body={url:url,node_id:nid,name:document.getElementById('mname').value.trim()||nid,
+keywords:csv('mkw'),allowed_roles:csv('mroles')};
+try{var r=await fetch('/api/models/add',{method:'POST',headers:hdrs(),body:JSON.stringify(body)});
+var d=await r.json();if(r.status===202){msg('mmsg','Import started for '+nid+' - downloading&hellip;','ok');pollJobs();}
+else{msg('mmsg',d.error||'Import failed','err');}}catch(e){msg('mmsg','Error: '+e,'err');}}
+var jobTimer=null;
+async function pollJobs(){try{var r=await fetch('/api/models/jobs');var d=await r.json();
+var jobs=d.jobs||{};var html='';var active=false;
+Object.keys(jobs).forEach(function(k){var j=jobs[k];if(j.state!=='ready'&&j.state!=='error')active=true;
+html+='<div style="font-family:ui-monospace,monospace;font-size:12px;color:var(--muted);margin:3px 0">'+
+esc2(j.node_id||k)+': '+esc2(j.state)+' '+(j.pct!=null?Math.round(j.pct)+'%':'')+' '+esc2(j.msg||'')+'</div>';});
+document.getElementById('jobs').innerHTML=html;
+if(active){if(jobTimer)clearTimeout(jobTimer);jobTimer=setTimeout(pollJobs,1500);}else{loadNodes();}}catch(e){}}
+function esc2(s){return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+async function loadNodes(){try{var r=await fetch('/api/models');var d=await r.json();var m=d.models||[];
+var html='<label>Live nodes</label>';
+m.forEach(function(n){var roles=(n.allowed_roles||[]).join(', ')||'all roles';
+html+='<div style="display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:6px 0">'+
+'<div style="flex:1"><code>'+esc2(n.node_id)+'</code> <span style="color:var(--muted);font-size:12px">'+
+(n.builtin?'built-in':'imported')+' &middot; roles: '+esc2(roles)+'</span></div>'+
+'<input id="nr_'+esc2(n.node_id)+'" placeholder="roles csv" style="max-width:180px;font-size:12px;padding:5px 8px">'+
+'<button class="ghost" style="margin:0;padding:6px 10px;font-size:12px" onclick="setRoles(\''+esc2(n.node_id)+'\')">Set roles</button>'+
+(n.builtin?'':'<button class="ghost" style="margin:0;padding:6px 10px;font-size:12px" onclick="delNode(\''+esc2(n.node_id)+'\')">Delete</button>')+
+'</div>';});
+document.getElementById('nodelist').innerHTML=html;}catch(e){}}
+async function setRoles(nid){var roles=document.getElementById('nr_'+nid).value.split(',').map(function(s){return s.trim();}).filter(Boolean);
+if(!roles.length){msg('mmsg','Enter at least one role (or use Delete to clear).','err');return;}
+try{var r=await fetch('/api/models/'+encodeURIComponent(nid)+'/roles',{method:'PUT',headers:hdrs(),
+body:JSON.stringify({allowed_roles:roles})});var d=await r.json();
+if(r.ok&&d.success){msg('mmsg','Roles for '+nid+' set to: '+roles.join(', '),'ok');loadNodes();}
+else{msg('mmsg',d.error||'Failed','err');}}catch(e){msg('mmsg','Error: '+e,'err');}}
+async function delNode(nid){if(!confirm('Remove node '+nid+'?'))return;
+try{var r=await fetch('/api/models/'+encodeURIComponent(nid),{method:'DELETE',headers:hdrs()});
+var d=await r.json();if(r.ok){msg('mmsg','Removed '+nid,'ok');loadNodes();}else{msg('mmsg',d.error||'Failed','err');}}
+catch(e){msg('mmsg','Error: '+e,'err');}}
+loadPolicy();loadNodes();
 </script></body></html>"""
 
 
@@ -1509,12 +1568,15 @@ def create_app():
     @app.route('/api/models', methods=['GET'])
     def list_models():
         """All expert nodes, flagging which are user-added (removable)."""
+        node_roles = get_rag_manager().get_permissions().get('node_roles') or {}
         out = []
         for node in node_registry.get_all_nodes():
+            rule = node_roles.get(node.node_id) or {}
             out.append({'node_id': node.node_id, 'name': node.name,
                         'description': node.description,
                         'builtin': node.node_id in _BUILTIN_IDS,
-                        'keywords': list(getattr(node, 'keywords', []) or [])})
+                        'keywords': list(getattr(node, 'keywords', []) or []),
+                        'allowed_roles': rule.get('allowed_roles')})
         return jsonify({'models': out})
 
     @app.route('/api/models/jobs', methods=['GET'])
@@ -1563,6 +1625,23 @@ def create_app():
             'temperature': float(data.get('temperature', 0.5)),
         }
         entry = {k: v for k, v in entry.items() if v is not None}
+
+        # Import-time node ACL: if allowed_roles is given, write it into the
+        # policy's node_roles now, so an imported model is governed from the
+        # moment it goes live (never a window where it is open to everyone).
+        allowed_roles = data.get('allowed_roles')
+        if allowed_roles:
+            try:
+                rm = get_rag_manager()
+                pol = dict(rm.get_permissions())
+                nr = dict(pol.get('node_roles') or {})
+                nr[node_id] = {'allowed_roles': [str(r).strip().lower()
+                                                 for r in allowed_roles]}
+                pol['node_roles'] = nr
+                rm.set_permissions(pol)
+            except Exception as e:
+                logger.error(f"could not set import-time node roles: {e}")
+
         job_id = f"add-{node_id}-{int(time.time())}"
         _job_set(job_id, state='downloading', pct=0.0, node_id=node_id,
                  msg='downloading model')
@@ -1589,6 +1668,40 @@ def create_app():
         _threading.Thread(target=_worker, daemon=True).start()
         return jsonify({'job_id': job_id, 'node_id': node_id,
                         'poll': '/api/models/jobs'}), 202
+
+    @app.route('/api/models/<node_id>/roles', methods=['GET', 'PUT', 'DELETE'])
+    def node_roles_crud(node_id):
+        """Read / set / clear the allowed_roles for one node (admin-gated).
+
+        PUT  body {allowed_roles: [...]}  -> only those roles may invoke it.
+        DELETE                            -> remove the rule (node follows the
+                                             node_default_allowed default).
+        Lets an operator adjust node permissions after import without editing
+        the whole policy document.
+        """
+        rm = get_rag_manager()
+        if request.method == 'GET':
+            rule = (rm.get_permissions().get('node_roles') or {}).get(node_id)
+            return jsonify({'node_id': node_id,
+                            'allowed_roles': (rule or {}).get('allowed_roles'),
+                            'default_allowed': bool(
+                                rm.get_permissions().get('node_default_allowed', True))})
+        deny = _require_admin()
+        if deny:
+            return deny
+        pol = dict(rm.get_permissions())
+        nr = dict(pol.get('node_roles') or {})
+        if request.method == 'DELETE':
+            nr.pop(node_id, None)
+        else:
+            roles = (request.get_json(silent=True) or {}).get('allowed_roles')
+            if not isinstance(roles, list) or not roles:
+                return jsonify({'error': 'allowed_roles must be a non-empty list'}), 400
+            nr[node_id] = {'allowed_roles': [str(r).strip().lower() for r in roles]}
+        pol['node_roles'] = nr
+        rm.set_permissions(pol)
+        return jsonify({'success': True, 'node_id': node_id,
+                        'allowed_roles': nr.get(node_id, {}).get('allowed_roles')})
 
     @app.route('/api/models/<node_id>', methods=['DELETE'])
     def delete_model(node_id):
