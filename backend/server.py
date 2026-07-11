@@ -83,17 +83,38 @@ _MATH_RE = re.compile(r'\d\s*[-+*/^=]\s*\d')
 
 # Default code model, chosen automatically: Qwen2.5-Coder benchmarked 10/10
 # against external unit tests vs CodeLlama's 3/10, so it ships as the
-# default. Existing installs without the Qwen file fall back to CodeLlama -
+# default. Existing installs with only the CodeLlama file fall back to it -
 # no user configuration required either way.
 _MODELS_DIR_ = Path(__file__).parent.parent / 'models'
-if (_MODELS_DIR_ / 'qwen2.5-coder-7b-instruct-q4.gguf').exists():
-    CODE_NODE_ID = 'code-qwen-coder-7b'
-    CODE_NODE_NAME = 'Code (Qwen2.5-Coder-7B)'
-    CODE_MODEL_FILE = 'qwen2.5-coder-7b-instruct-q4.gguf'
-else:
-    CODE_NODE_ID = 'code-codellama-7b'
-    CODE_NODE_NAME = 'Code (CodeLlama-7B)'
-    CODE_MODEL_FILE = 'codellama-7b-q4.gguf'
+CODE_NODE_ID = 'code-qwen-coder-7b'
+CODE_NODE_NAME = 'Code (Qwen2.5-Coder-7B)'
+CODE_MODEL_FILE = 'qwen2.5-coder-7b-instruct-q4.gguf'
+
+
+def _select_code_model():
+    """Pick the code model AT RUNTIME (create_app), not import time.
+
+    Import-time selection broke under Docker orderings and, worse, when no
+    model file existed the node registered under the deprecated CodeLlama
+    identity - so a broken install showed 'Code (CodeLlama-7B) - offline',
+    which is wrong twice. Rules: Qwen file -> Qwen; only CodeLlama file ->
+    CodeLlama (legacy installs keep working); NEITHER -> keep the modern
+    Qwen identity and let the node report unavailable with a message that
+    says how to fix it, instead of resurrecting a deprecated name.
+    """
+    global CODE_NODE_ID, CODE_NODE_NAME, CODE_MODEL_FILE
+    qwen = _MODELS_DIR_ / 'qwen2.5-coder-7b-instruct-q4.gguf'
+    codellama = _MODELS_DIR_ / 'codellama-7b-q4.gguf'
+    if not qwen.exists() and codellama.exists():
+        CODE_NODE_ID = 'code-codellama-7b'
+        CODE_NODE_NAME = 'Code (CodeLlama-7B)'
+        CODE_MODEL_FILE = 'codellama-7b-q4.gguf'
+    else:
+        CODE_NODE_ID = 'code-qwen-coder-7b'
+        CODE_NODE_NAME = 'Code (Qwen2.5-Coder-7B)'
+        CODE_MODEL_FILE = 'qwen2.5-coder-7b-instruct-q4.gguf'
+    logger.info(f"Code node: {CODE_NODE_NAME} "
+                f"({'model present' if (_MODELS_DIR_ / CODE_MODEL_FILE).exists() else 'MODEL MISSING - re-run the launcher to download it'})")
 
 
 def _recent_context(history, cap=600):
@@ -922,6 +943,9 @@ def create_app():
 
     node_registry = NodeRegistry()
     models_dir = Path(__file__).parent.parent / 'models'
+    # Runtime (not import-time) code-model selection: by now the models
+    # volume is mounted, so the choice reflects what is actually on disk.
+    _select_code_model()
 
     node_specs = [
         lambda: LanguageNode(node_id='language-mistral-7b', name='Language (OpenHermes-Mistral-7B)',
@@ -1035,6 +1059,10 @@ def create_app():
                 nodes_list.append({
                     'id': node.node_id, 'node_id': node.node_id, 'name': node.name,
                     'description': node.description, 'status': status_string,
+                    # WHY a node is offline ("model not downloaded - re-run
+                    # the launcher"), so the UI explains instead of just
+                    # showing a red dot on a deprecated name.
+                    'status_detail': getattr(node, 'status_detail', None),
                     'capabilities': caps, 'keywords': kws,
                     'is_remote': getattr(node, 'is_remote', False),
                     'version': getattr(node, 'version', '1.0.0'),

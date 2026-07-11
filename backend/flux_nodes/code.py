@@ -137,8 +137,16 @@ class CodeNode(FluxNode):
                 logger.info(f"Found alternative model: {alt_path}")
                 self.model_path = alt_path
             else:
-                logger.error(f"No suitable CodeLlama model found near {self.model_path}")
+                # Model-neutral message: this node may be Qwen (default) or
+                # CodeLlama (legacy); a missing file means the models volume
+                # is not mounted or the launcher has not downloaded it yet.
+                logger.error(
+                    f"Code model file missing: {self.model_path}. "
+                    f"Re-run the launcher to download it (or check that the "
+                    f"models volume is mounted).")
                 self.is_available = False
+                self.status_detail = ("model not downloaded - re-run the "
+                                      "launcher (or mount the models volume)")
                 return
 
         logger.info("CodeNode initialization complete")
