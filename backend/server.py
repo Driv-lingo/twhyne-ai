@@ -126,7 +126,10 @@ def _looks_like_math(prompt: str) -> bool:
         return True
     kws = ['calculate', 'compute', 'solve', 'derivative', 'integral',
            'integrate', 'differentiate', 'square root', 'divided by',
-           'multiplied by', 'plus ', 'minus ', 'times ']
+           'multiplied by', 'plus ', 'minus ', 'times ',
+           # Imperative arithmetic ("Divide 30 by half and add 10") is math,
+           # not chat; the digit gate below keeps prose out.
+           'divide ', 'by half']
     # A word-operator match needs an actual digit: 'counts how many times
     # target appears' is a coding request, not arithmetic.
     return any(k in p for k in kws) and any(c.isdigit() for c in p)
@@ -180,7 +183,9 @@ def _extractive_answer(prompt, kept, top_score):
     confidence is high and the question is a short factoid; anything needing
     synthesis falls through to the model. Returns (text, source) or None.
     """
-    if top_score < 0.70 or len(prompt) > 140 or not _FACTOID_RE.match(prompt):
+    # 0.66 floor: 0.70 pushed clear factoids ("insulin window before meals")
+    # into 5-minute generations; the span checks below are the real guard.
+    if top_score < 0.66 or len(prompt) > 160 or not _FACTOID_RE.match(prompt):
         return None
     qwords = {w.strip('?.,!').lower() for w in prompt.split()} - _STOP_LITE
     qwords = {w for w in qwords if len(w) > 2}
@@ -1117,6 +1122,44 @@ def create_app():
                                 'node_id': 'language-mistral-7b', 'sources': [],
                                 'denied_sources': len(denied)})
 
+            # NAMED-SOURCE PREFERENCE: "according to the operations manual"
+            # names a document; answering from a different one is a citation
+            # failure even when the fact is right. Match the named phrase
+            # against retrieved source names (word/prefix overlap so
+            # "operations manual" finds twhyne_ops_manual) and, when a match
+            # was actually retrieved, restrict the working set to it.
+            if should_ground and kept:
+                m_named = re.search(
+                    r'\baccording to (?:the )?([a-z0-9 _\-]{3,40}?)[,.?]', prompt.lower() + '.')
+                if m_named:
+                    _ALIASES = {'operations': 'ops', 'documentation': 'docs',
+                                'specification': 'spec', 'configuration': 'config'}
+                    phrase_words = [w for w in re.findall(r'[a-z0-9]+', m_named.group(1))
+                                    if w not in ('the', 'a', 'an', 'of', 'most', 'recent',
+                                                 'current', 'latest', 'new')]
+                    def _src_score(src):
+                        sw = re.findall(r'[a-z0-9]+', src.lower())
+                        n = 0
+                        for pw in phrase_words:
+                            cands = {pw, _ALIASES.get(pw, pw)}
+                            if any(c == w or c.startswith(w) or w.startswith(c)
+                                   for w in sw if len(w) > 2
+                                   for c in cands if len(c) > 2):
+                                n += 1
+                        return n
+                    ranked = sorted({r.get('source', '') for r in kept},
+                                    key=_src_score, reverse=True)
+                    if ranked and _src_score(ranked[0]) >= 2:
+                        preferred = ranked[0]
+                        narrowed = [r for r in kept if r.get('source') == preferred]
+                        if narrowed:
+                            logger.info(f"Named-source preference: '{preferred}'")
+                            kept = narrowed
+                            sources = [preferred]
+                            context = "".join(
+                                f"[Source: {r['source']}]\n{r['content']}\n\n"
+                                for r in kept)[:MAX_CONTEXT_CHARS]
+
             if should_ground and context:
                 # EXTRACTIVE FAST PATH: for a direct fact question with high
                 # retrieval confidence, quote the exact source sentence and
@@ -1157,8 +1200,11 @@ def create_app():
                 # Full conversation history stays out of grounded mode (it
                 # caused token overflows); the capped snippet above is enough
                 # for follow-up questions.
+                # Latency budget: a grounded answer is a cited fact or a short
+                # summary, not an essay. 220 tokens is ample for both and cuts
+                # worst-case CPU generation from ~5 minutes to ~1-2.
                 q = Query(id=f"query_{int(time.time() * 1000)}", text=grounded,
-                          parameters={}, history=[])
+                          parameters={'max_tokens': 220}, history=[])
                 _set_progress('queued', 'grounded answer')
                 with _INFER_LOCK:
                     if _is_cancelled(client_rid):
@@ -1174,6 +1220,15 @@ def create_app():
                         r"(contain|provide|include|specify|state|mention)",
                         text, re.I)):
                     sources = []
+                # SOURCE MINIMALITY: cite what actually supports the answer,
+                # not everything retrieval considered. If the model names its
+                # sources in the text, the citation list is exactly those;
+                # otherwise fall back to the top retrieved document. "Correct
+                # answer + four decorative citations" is slop.
+                if sources:
+                    named_in_text = [s for s in sources
+                                     if re.search(re.escape(s), text, re.I)]
+                    sources = named_in_text if named_in_text else sources[:1]
                 if sources:
                     text += "\n\n---\nSources: " + ", ".join(sources)
                 payload = {'result': text, 'response': text,

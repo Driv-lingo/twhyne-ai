@@ -2355,7 +2355,12 @@
     "0",
     "zero",
     "fly away",
-    "flew away"
+    "flew away",
+    "fly off",
+    "flew off",
+    "no birds",
+    "scare",
+    "scared"
    ],
    "expect_node": "language-mistral-7b"
   },

@@ -57,6 +57,14 @@ def _normalize(query: str) -> str:
     s = (s.replace('×', '*').replace('÷', '/')
           .replace('−', '-').replace('·', '*'))
     s = re.sub(r'(?<=\d),(?=\d)', '', s)
+    # The classic trick: "divide 30 by half" means 30/0.5 (=60), not 30/2.
+    # "half OF x" is multiplication and stays untouched.
+    s = re.sub(r'\bby\s+half\b', 'by 0.5', s, flags=re.I)
+    s = re.sub(r'\bhalf\s+of\s+', '0.5 * ', s, flags=re.I)
+    # Imperative chain form: "Divide 30 by 0.5 and add 10" -> (30/0.5)+10.
+    s = re.sub(r'^\s*divide\s+([\d.]+)\s+by\s+([\d.]+)\s+and\s+add\s+([\d.]+)\s*$',
+               r'(\1 / \2) + \3', s, flags=re.I)
+    s = re.sub(r'^\s*divide\s+([\d.]+)\s+by\s+([\d.]+)\s*$', r'\1 / \2', s, flags=re.I)
     sl = ' ' + s + ' '
     for w, o in _WORD_OPS:
         # Replacement via lambda: '*' must be inserted literally. Escaping it

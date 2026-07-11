@@ -410,7 +410,7 @@ REASONING = [
     ("Which is larger: one half or one third?", ["half"]),
     ("A doctor gives you three pills and tells you to take one every half hour. How many minutes until you've taken them all?", ["60"]),
     ("If no fish can fly and a salmon is a fish, can a salmon fly?", ["no"]),
-    ("There are 5 birds on a wire. A hunter shoots one. How many birds remain on the wire?", ["none", "0", "zero", "fly away", "flew away"]),
+    ("There are 5 birds on a wire. A hunter shoots one. How many birds remain on the wire?", ["none", "0", "zero", "fly away", "flew away", "fly off", "flew off", "no birds", "scare", "scared"]),
     ("If A is west of B, is B east of A?", ["yes"]),
     ("Sam has twice as many apples as Alex. Alex has 3 apples. How many apples does Sam have?", ["6", "six"]),
     ("Can a man living in New York be buried west of the Mississippi? Answer considering he is living.", ["no", "living", "alive"]),

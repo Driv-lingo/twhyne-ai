@@ -221,10 +221,17 @@ class CodeNode(FluxNode):
                              "checked its outputs. Review the logic before "
                              "relying on it.")
                 return f"```python\n{code}\n```\n\n{label}"
+            # Clean refusal: broken code with a traceback is not an answer.
+            # Verify -> repair -> refuse; the failing draft never ships as if
+            # it were a deliverable (the user can re-ask or rephrase).
             logger.warning(f"Code failed verification after retry: {err}")
-            return (f"```python\n{code}\n```\n\n"
-                    f"Warning: this code FAILED automatic verification "
-                    f"({err}). Review before using.")
+            first_err = (err or "").strip().splitlines()
+            first_err = first_err[-1][:160] if first_err else "verification failed"
+            return ("I could not produce verified code for this request. "
+                    "The generated candidate failed automatic verification "
+                    f"({first_err}) and one repair attempt did not fix it. "
+                    "Rather than hand over unverified code, I'm stopping here - "
+                    "try rephrasing or narrowing the request.")
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")

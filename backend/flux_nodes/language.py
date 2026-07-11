@@ -53,10 +53,12 @@ class LanguageNode(FluxNode):
             formatted_prompt = self._format_prompt(prompt, conversation_history)
             response = model(
                 formatted_prompt,
-                # 320-token cap: on CPU-only hosts generation runs ~1 tok/s
-                # under load, so 512 tokens meant multi-minute worst cases
-                # (benchmark saw 600s timeouts on trivial questions).
-                max_tokens=320, temperature=0.5, top_p=0.8, top_k=20,
+                # 320-token default cap: on CPU-only hosts generation runs
+                # ~1 tok/s under load, so 512 tokens meant multi-minute worst
+                # cases. Callers can tighten further (grounded answers pass
+                # 220) but never exceed the cap.
+                max_tokens=min(int(kwargs.get('max_tokens', 320)), 320),
+                temperature=0.5, top_p=0.8, top_k=20,
                 # Stop sequences: the grounded prompt ends "Question: X / Answer:",
                 # and without these the model continues inventing extra Q/A
                 # pairs - spilling unrelated (even confidential) retrieved
