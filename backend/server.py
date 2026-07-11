@@ -513,6 +513,62 @@ def _escalate_alert(alert):
 
 _HEARTBEAT_STATE = {'last_ts': 0.0, 'license_valid': True, 'message': ''}
 
+# Enforcement: once the license server EXPLICITLY reports the key invalid
+# (revoked/expired — not merely offline), a grace timer starts. After
+# TWHYNE_REVOKE_GRACE_H (default 72h) /query is blocked until a valid ping
+# clears it. Offline never triggers enforcement: air-gapped installs are a
+# supported deployment, and the startup gate in docker-entrypoint.sh already
+# refuses to boot on a key the server rejects. State is persisted (HMAC'd
+# with the license key) so a restart doesn't reset the grace clock.
+_LICENSE_STATE_PATH = Path(os.environ.get(
+    'TWHYNE_LICENSE_STATE',
+    str(Path(__file__).parent / 'rag_storage' / 'license_state.json')))
+
+
+def _license_state_sig(payload: str) -> str:
+    key = os.environ.get('SNF_LICENSE_KEY', '').strip()
+    return _hashlib.sha256((payload + '|' + key).encode()).hexdigest()
+
+
+def _load_license_state():
+    """{'first_invalid_ts': float|None} — verified against its signature."""
+    import json as _json
+    try:
+        raw = _json.loads(_LICENSE_STATE_PATH.read_text())
+        payload = _json.dumps(raw.get('state'), sort_keys=True)
+        if _hmac.compare_digest(raw.get('sig', ''), _license_state_sig(payload)):
+            return raw.get('state') or {}
+    except Exception:
+        pass
+    return {}
+
+
+def _save_license_state(state):
+    import json as _json
+    try:
+        _LICENSE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = _json.dumps(state, sort_keys=True)
+        _LICENSE_STATE_PATH.write_text(_json.dumps(
+            {'state': state, 'sig': _license_state_sig(payload)}))
+    except Exception as e:
+        logger.error(f"license state save failed: {e}")
+
+
+def _license_blocked():
+    """(blocked, message). True once the revocation grace window has lapsed."""
+    grace_h = float(os.environ.get('TWHYNE_REVOKE_GRACE_H', '72') or 72)
+    state = _load_license_state()
+    first = state.get('first_invalid_ts')
+    if not first:
+        return False, ''
+    remaining = grace_h * 3600 - (time.time() - float(first))
+    if remaining > 0:
+        return False, (f"License invalid — service continues for "
+                       f"{int(remaining // 3600)}h grace. Renew at twhyne.com.")
+    return True, ("This deployment's license was revoked or expired and the "
+                  "grace period has ended. Renew at twhyne.com or contact "
+                  "support; queries are disabled until the key validates.")
+
 
 def _audit_counters_since(ts):
     """(redactions, refusals, records) from ledger entries newer than ts."""
@@ -569,6 +625,22 @@ def _license_heartbeat_once():
         if not payload.get('valid', True):
             _HEARTBEAT_STATE['license_valid'] = False
             _HEARTBEAT_STATE['message'] = payload.get('message', 'invalid')
+            # Anchor the grace clock to the server's timestamp when given, so
+            # deleting the local state file cannot restart the countdown.
+            server_ts = None
+            try:
+                iso = payload.get('invalid_since')
+                if iso:
+                    from datetime import datetime as _dt
+                    server_ts = _dt.fromisoformat(str(iso)).timestamp()
+            except Exception:
+                server_ts = None
+            state = _load_license_state()
+            candidates = [t for t in (state.get('first_invalid_ts'),
+                                      server_ts, time.time()) if t]
+            first = min(candidates)
+            if state.get('first_invalid_ts') != first:
+                _save_license_state({'first_invalid_ts': first})
             logger.error(f"LICENSE INVALID: {payload.get('message')} — "
                          f"contact twhyne.com; this deployment is out of terms.")
             _escalate_alert({
@@ -582,6 +654,8 @@ def _license_heartbeat_once():
         else:
             _HEARTBEAT_STATE['license_valid'] = True
             _HEARTBEAT_STATE['message'] = 'ok'
+            if _load_license_state().get('first_invalid_ts'):
+                _save_license_state({})  # revocation cleared (renewed key)
     except Exception as e:
         # Offline is fine — local-first must keep working without internet.
         logger.info(f"license heartbeat skipped (offline?): {e}")
@@ -899,6 +973,9 @@ def create_app():
     def submit_query():
         if request.method == 'OPTIONS':
             return '', 200
+        blocked, lic_msg = _license_blocked()
+        if blocked:
+            return jsonify({'error': lic_msg, 'license_invalid': True}), 403
         try:
             data = request.get_json()
             if not data:
