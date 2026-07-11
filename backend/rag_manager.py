@@ -199,6 +199,31 @@ class SemanticRAGManager:
                 return role in allowed
         return None  # no explicit rule; caller applies content-based default
 
+    def node_can_access(self, node_id: str, role: str) -> bool:
+        """True if *role* may invoke expert node *node_id*.
+
+        Mirrors document ACLs for compute nodes: policy 'node_roles' maps a
+        node id to its allowed roles. A node with no rule follows
+        'node_default_allowed' (default True) so ordinary experts stay open
+        while a sensitive node (an imported model over confidential data, a
+        tool node) can be locked to specific roles. This is how a customer
+        governs WHICH intelligence a role may reach, not just which documents.
+        """
+        role = (role or 'public').strip().lower()
+        nid = (node_id or '').strip()
+        rules = self.permissions.get('node_roles') or {}
+        rule = rules.get(nid)
+        if rule is None:
+            # allow an exact-prefix family match, e.g. "code-*"
+            for key, r in rules.items():
+                if key.endswith('*') and nid.startswith(key[:-1]):
+                    rule = r
+                    break
+        if rule is None:
+            return bool(self.permissions.get('node_default_allowed', True))
+        allowed = [r.lower() for r in (rule.get('allowed_roles') or [])]
+        return role in allowed
+
     def _chunk_roles(self, doc):
         """CHUNK-LEVEL ACL: an inline '[[ROLES: it_admin, admin]]' tag in a
         chunk restricts THAT chunk to the listed roles, independent of its

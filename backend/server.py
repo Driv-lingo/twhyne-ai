@@ -260,7 +260,7 @@ code{background:#0e0b16;padding:2px 6px;border-radius:4px;font-size:12px;color:v
 <input id="admtok" type="password" placeholder="X-Admin-Token (leave blank on fresh install)"></div>
 
 <div class="card"><h2>Access policy</h2>
-<div class="sub" style="margin:0 0 6px">Per-source roles decide who can retrieve which documents. Edit the JSON, then save.</div>
+<div class="sub" style="margin:0 0 6px">Governs retrieval AND compute. <code>sources</code> = who can read which documents; <code>node_roles</code> = which roles may invoke which expert nodes (supports <code>"code-*"</code> family rules); <code>node_default_allowed</code> = false locks every unlisted node down. Edit the JSON, then save.</div>
 <textarea id="policy" spellcheck="false"></textarea>
 <div class="row"><button class="ghost" onclick="loadPolicy()">Reload</button><button onclick="savePolicy()">Save policy</button></div>
 <div class="msg" id="pmsg"></div></div>
@@ -454,6 +454,21 @@ import hmac as _hmac
 def _hmac_equal(a, b):
     """Constant-time string comparison for admin-token checks."""
     return _hmac.compare_digest(str(a), str(b))
+
+
+def _require_admin():
+    """Return a 401 response if TWHYNE_ADMIN_TOKEN is set and not matched,
+    else None (open on a fresh install with no token). Import-safe: uses the
+    request in scope. Callers: `deny = _require_admin(); if deny: return deny`.
+    """
+    from flask import request as _rq, jsonify as _js
+    token = os.environ.get('TWHYNE_ADMIN_TOKEN', '').strip()
+    if not token:
+        return None
+    supplied = _rq.headers.get('X-Admin-Token', '').strip()
+    if not supplied or not _hmac_equal(supplied, token):
+        return _js({'error': 'Unauthorized - admin token required'}), 401
+    return None
 
 _AUDIT_LOCK = _threading.Lock() if False else __import__('threading').Lock()
 _AUDIT_PATH = Path(os.environ.get(
@@ -1151,7 +1166,8 @@ def create_app():
             # just because a document chunk happens to score above threshold.
             if _looks_like_math(prompt):
                 math_node = node_registry.get_node('math-llm-eval')
-                if math_node and math_node.is_available:
+                if (math_node and math_node.is_available
+                        and get_rag_manager().node_can_access('math-llm-eval', role)):
                     logger.info("Math shortcut: routing directly to SymPy")
                     q = Query(id=f"query_{int(time.time() * 1000)}", text=prompt,
                               parameters={}, history=[])
@@ -1432,6 +1448,17 @@ def create_app():
             if not node:
                 return jsonify({'error': 'No suitable node available'}), 400
 
+            # NODE-LEVEL PERMISSION: a role may be barred from an expert node
+            # (e.g. an imported model trained on confidential data, or a tool
+            # node) just as it can be barred from a document. Checked after
+            # routing so the refusal names the node the role can't reach.
+            if not get_rag_manager().node_can_access(node.node_id, role):
+                msg = (f"Your role ('{role}') is not permitted to use the "
+                       f"'{node.node_id}' node.")
+                return jsonify({'result': msg, 'response': msg,
+                                'node_id': node.node_id, 'sources': [],
+                                'grounded': False, 'node_denied': True}), 200
+
             filepath = data.get('filepath', None)
             image_path = data.get('image_path', None)
             parameters = {}
@@ -1506,6 +1533,11 @@ def create_app():
         """
         if request.method == 'OPTIONS':
             return '', 200
+        # Adding a node changes what intelligence runs in the deployment -
+        # admin-gated when a token is configured (open on fresh local installs).
+        deny = _require_admin()
+        if deny:
+            return deny
         data = request.get_json() or {}
         url = (data.get('url') or '').strip()
         node_id = (data.get('node_id') or '').strip()
@@ -1561,6 +1593,9 @@ def create_app():
     @app.route('/api/models/<node_id>', methods=['DELETE'])
     def delete_model(node_id):
         """Remove a user-added node (built-ins are protected)."""
+        deny = _require_admin()
+        if deny:
+            return deny
         if node_id in _BUILTIN_IDS:
             return jsonify({'error': 'cannot remove a built-in node'}), 400
         node_registry._nodes.pop(node_id, None)
