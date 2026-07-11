@@ -61,10 +61,14 @@ def _normalize(query: str) -> str:
     # "half OF x" is multiplication and stays untouched.
     s = re.sub(r'\bby\s+half\b', 'by 0.5', s, flags=re.I)
     s = re.sub(r'\bhalf\s+of\s+', '0.5 * ', s, flags=re.I)
-    # Imperative chain form: "Divide 30 by 0.5 and add 10" -> (30/0.5)+10.
-    s = re.sub(r'^\s*divide\s+([\d.]+)\s+by\s+([\d.]+)\s+and\s+add\s+([\d.]+)\s*$',
-               r'(\1 / \2) + \3', s, flags=re.I)
-    s = re.sub(r'^\s*divide\s+([\d.]+)\s+by\s+([\d.]+)\s*$', r'\1 / \2', s, flags=re.I)
+    # Chain form ANYWHERE in the sentence ("If you divide 30 by 0.5 and add
+    # 10, what do you get?"): the anchored version missed every phrasing
+    # that wrapped the imperative in a question.
+    s = re.sub(r'divide\s+([\d.]+)\s+by\s+([\d.]+)\s+and\s+(add|plus)\s+([\d.]+)',
+               r'((\1 / \2) + \4)', s, flags=re.I)
+    s = re.sub(r'divide\s+([\d.]+)\s+by\s+([\d.]+)\s+and\s+subtract\s+([\d.]+)',
+               r'((\1 / \2) - \3)', s, flags=re.I)
+    s = re.sub(r'divide\s+([\d.]+)\s+by\s+([\d.]+)', r'(\1 / \2)', s, flags=re.I)
     sl = ' ' + s + ' '
     for w, o in _WORD_OPS:
         # Replacement via lambda: '*' must be inserted literally. Escaping it

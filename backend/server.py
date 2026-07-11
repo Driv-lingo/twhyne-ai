@@ -1160,12 +1160,32 @@ def create_app():
                         'subject': data.get('role'),
                     })
                 # One tamper-evident audit record per answered query.
-                verdict = ('refused' if isinstance(data.get('response'), str)
-                           and ('do not have' in data['response'].lower()
-                                or 'not in the' in data['response'].lower()
-                                or 'not authorized' in data['response'].lower())
+                resp_low = (data.get('response') or '').lower() if isinstance(
+                    data.get('response'), str) else ''
+                verdict = ('refused' if resp_low
+                           and ('do not have' in resp_low
+                                or 'not in the' in resp_low
+                                or 'not authorized' in resp_low)
                            else 'cancelled' if data.get('cancelled')
                            else 'answered')
+                # SENSITIVE-REQUEST VERDICTS: asking for a password, key,
+                # salary or credential is a security-relevant event even when
+                # the answer is a polite "the sources don't provide that".
+                # The audit must record it as a refusal of a sensitive
+                # request, not ordinary source absence - the distinction is
+                # what lets an operator spot probing.
+                prompt_low = (request.get_json(silent=True) or {}).get(
+                    'prompt', '').lower()
+                sensitive_ask = bool(re.search(
+                    r'\b(password|passphrase|salar(y|ies)|api[ _-]?key|secret|'
+                    r'credential|access[ _-]?token|private[ _-]?key|ssn|'
+                    r'social security)\b', prompt_low))
+                if sensitive_ask and verdict == 'answered' and resp_low and (
+                        re.search(r"do(es)?\s*(not|n't)\s*(provide|contain|"
+                                  r"include|state|specify|mention)", resp_low)
+                        or 'not available' in resp_low
+                        or "don't have" in resp_low):
+                    verdict = 'refused'
                 # VERIFICATION GATES: every answer carries a machine-readable
                 # record of each control it passed through. Stamped here at
                 # the choke point so no code path can produce an answer
@@ -1193,6 +1213,11 @@ def create_app():
                     'generation': how,
                     'redaction': 'fired' if data.get('redacted') else 'clean',
                     'verdict': verdict,
+                    'sensitive_request': sensitive_ask,
+                    'verdict_reason': ('sensitive request - not authorized or '
+                                       'not in authorized sources'
+                                       if sensitive_ask and verdict == 'refused'
+                                       else None),
                     'cached': bool(data.get('cached')),
                 }
                 data['gates'] = gates

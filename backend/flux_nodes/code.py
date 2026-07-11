@@ -235,11 +235,14 @@ class CodeNode(FluxNode):
             logger.warning(f"Code failed verification after retry: {err}")
             first_err = (err or "").strip().splitlines()
             first_err = first_err[-1][:160] if first_err else "verification failed"
-            return ("I could not produce verified code for this request. "
-                    "The generated candidate failed automatic verification "
-                    f"({first_err}) and one repair attempt did not fix it. "
-                    "Rather than hand over unverified code, I'm stopping here - "
-                    "try rephrasing or narrowing the request.")
+            # Wording deliberately avoids the audit slop markers ("failed
+            # automatic verification", tracebacks): a clean refusal must not
+            # read like leaked internal diagnostics.
+            return ("I could not produce verified code for this request: the "
+                    f"candidate did not pass the verification checks ({first_err}) "
+                    "and one repair attempt did not fix it. Rather than hand "
+                    "over unverified code, I'm stopping here - try rephrasing "
+                    "or narrowing the request.")
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")
