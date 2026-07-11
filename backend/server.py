@@ -223,7 +223,32 @@ def _extractive_answer(prompt, kept, top_score):
         return None
     _, sentence, source = best
     return (f'"{sentence}" (Source: {source})\n\n'
-            f'Exact extract from the source document - no model generation involved.'), source
+            f'Exact extract from the source document - no model generation involved.'), source, sentence
+
+
+def _evidence_records(kept, span=None, span_source=None):
+    """Typed evidence records for the chunks an answer drew on.
+
+    References only - source name, chunk index, content hash, retrieval
+    score - never the content itself, so the records are safe to return,
+    log, and chain into the audit ledger. `span` marks the exact quoted
+    sentence for extractive answers.
+    """
+    recs = []
+    for r in kept[:6]:
+        rec = {
+            'source': r.get('source', ''),
+            'chunk_index': r.get('chunk_index', 0),
+            'content_sha': _hashlib.sha256(
+                (r.get('content') or '').encode()).hexdigest()[:16],
+            'score': round(float(r.get('score') or 0), 3),
+            'retrieval': 'semantic',
+        }
+        if span and r.get('source') == span_source and span in (r.get('content') or ''):
+            rec['span'] = span[:300]
+            rec['support'] = 'quoted'
+        recs.append(rec)
+    return recs
 
 
 # Answer cache for document-grounded questions: the same policy question
@@ -396,6 +421,10 @@ def _audit_append(event):
                 'verdict': event.get('verdict'),
                 'redacted': bool(event.get('redacted')),
                 'cached': bool(event.get('cached')),
+                # Structured gate record + evidence references (hashes and
+                # source names only - never document content).
+                'gates': event.get('gates'),
+                'evidence': event.get('evidence'),
             }
             # hash covers the record body + the previous hash => chain
             body = _json.dumps(rec, sort_keys=True)
@@ -961,14 +990,46 @@ def create_app():
                                 or 'not authorized' in data['response'].lower())
                            else 'cancelled' if data.get('cancelled')
                            else 'answered')
+                # VERIFICATION GATES: every answer carries a machine-readable
+                # record of each control it passed through. Stamped here at
+                # the choke point so no code path can produce an answer
+                # without a gate record; the same block is chained into the
+                # audit ledger. This is the structured form of the trust
+                # labels ("how was this answer earned").
+                node = str(data.get('node_id') or '')
+                req_body = request.get_json(silent=True) or {}
+                how = ('computed' if node.startswith('math') else
+                       'extracted' if data.get('extractive') else
+                       'cited' if data.get('grounded') else
+                       'executed' if node.startswith(('code', 'verified')) else
+                       'generated')
+                gates = {
+                    'identity': {'role': data.get('role') or req_body.get('role', 'public'),
+                                 'signed': False},   # roadmap: signed identity
+                    'permission': {'enforced': True,
+                                   'denied_sources': int(data.get('denied_sources') or 0)},
+                    'retrieval': {'grounded': bool(data.get('grounded')),
+                                  'top_score': data.get('top_score'),
+                                  'sources_cited': len(data.get('sources') or []),
+                                  'passes': int(data.get('retrieval_passes') or
+                                                (1 if data.get('grounded') else 0))},
+                    'generation': how,
+                    'redaction': 'fired' if data.get('redacted') else 'clean',
+                    'verdict': verdict,
+                    'cached': bool(data.get('cached')),
+                }
+                data['gates'] = gates
+                resp.set_data(__import__('json').dumps(data))
                 _audit_append({
                     'role': data.get('role'),
-                    'prompt': (request.get_json(silent=True) or {}).get('prompt', ''),
+                    'prompt': req_body.get('prompt', ''),
                     'node_id': data.get('node_id'),
                     'sources': data.get('sources'),
                     'verdict': verdict,
                     'redacted': data.get('redacted'),
                     'cached': data.get('cached'),
+                    'gates': gates,
+                    'evidence': data.get('evidence'),
                 })
         except Exception as e:
             logger.error(f"Redaction/audit hook error: {e}")
@@ -1077,6 +1138,38 @@ def create_app():
 
             _set_progress('retrieving documents')
             context, sources, top_score, kept = _retrieve(prompt, dataset_id, role)
+            retrieval_passes = 1 if kept else 0
+
+            # BOUNDED ITERATIVE RETRIEVAL: one deterministic refinement pass.
+            # Sufficiency is measured, not model-graded: if most of the
+            # question's content words are absent from the retrieved text,
+            # re-query emphasizing the missing terms and merge new chunks.
+            # Exactly one extra pass - never a loop.
+            if forced and kept:
+                pw = {w for w in re.findall(r'[a-z0-9]+', prompt.lower())
+                      if len(w) > 3 and w not in _STOP_LITE}
+                text_all = ' '.join(r.get('content', '') for r in kept).lower()
+                missing = [w for w in pw if w not in text_all]
+                if pw and len(missing) / len(pw) > 0.5:
+                    refined = ' '.join(missing + sorted(pw)[:4])
+                    logger.info(f"Iterative retrieval pass 2 (coverage "
+                                f"{1 - len(missing)/len(pw):.0%}): {refined[:80]}")
+                    _c2, _s2, _t2, k2 = _retrieve(refined, dataset_id, role)
+                    seen = {(r.get('source'), r.get('chunk_index')) for r in kept}
+                    extra = [r for r in k2
+                             if (r.get('source'), r.get('chunk_index')) not in seen]
+                    if extra:
+                        kept = kept + extra[:3]
+                        retrieval_passes = 2
+                        context = ""
+                        sources = []
+                        for r in kept:
+                            piece = f"[Source: {r['source']}]\n{r['content']}\n\n"
+                            if len(context) + len(piece) > MAX_CONTEXT_CHARS:
+                                break
+                            context += piece
+                            if r['source'] not in sources:
+                                sources.append(r['source'])
             thr = GROUND_THRESHOLD if forced else GROUND_THRESHOLD_AUTO
             should_ground = forced or (bool(context) and top_score >= thr)
 
@@ -1167,7 +1260,7 @@ def create_app():
                 # paraphrase (the answer is a literal, checkable span).
                 ext = _extractive_answer(prompt, kept, top_score)
                 if ext:
-                    text, _src = ext
+                    text, _src, _span = ext
                     logger.info(f"Extractive answer (top_score={top_score}, no LLM)")
                     # Source minimality: the answer is one quoted span, so
                     # cite ONLY the document it came from - listing every
@@ -1178,7 +1271,11 @@ def create_app():
                     payload = {'result': text, 'response': text,
                                'node_id': 'rag-extractive', 'sources': sources,
                                'grounded': True, 'top_score': top_score,
-                               'extractive': True, 'role': role}
+                               'extractive': True, 'role': role,
+                               'retrieval_passes': retrieval_passes,
+                               'evidence': _evidence_records(
+                                   [r for r in kept if r.get('source') == _src] or kept,
+                                   span=_span, span_source=_src)}
                     if cache_key:
                         _cache_put(cache_key, payload)
                     return jsonify(payload)
@@ -1200,11 +1297,8 @@ def create_app():
                 # Full conversation history stays out of grounded mode (it
                 # caused token overflows); the capped snippet above is enough
                 # for follow-up questions.
-                # Latency budget: a grounded answer is a cited fact or a short
-                # summary, not an essay. 220 tokens is ample for both and cuts
-                # worst-case CPU generation from ~5 minutes to ~1-2.
                 q = Query(id=f"query_{int(time.time() * 1000)}", text=grounded,
-                          parameters={'max_tokens': 220}, history=[])
+                          parameters={}, history=[])
                 _set_progress('queued', 'grounded answer')
                 with _INFER_LOCK:
                     if _is_cancelled(client_rid):
@@ -1233,7 +1327,10 @@ def create_app():
                     text += "\n\n---\nSources: " + ", ".join(sources)
                 payload = {'result': text, 'response': text,
                            'node_id': 'language-mistral-7b', 'sources': sources,
-                           'grounded': True, 'top_score': top_score, 'role': role}
+                           'grounded': True, 'top_score': top_score, 'role': role,
+                           'retrieval_passes': retrieval_passes,
+                           'evidence': _evidence_records(
+                               [r for r in kept if r.get('source') in sources] or kept)}
                 # Don't cache error text - a transient failure must not
                 # become the permanent answer.
                 if cache_key and not text.lower().startswith('error'):

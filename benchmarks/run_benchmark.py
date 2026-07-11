@@ -202,6 +202,11 @@ def ask_twhyne(base_url, prompt, dataset_id=None, use_rag=False, role=None):
             pass
         raise
     text = resp.get("response") or resp.get("result") or ""
+    # Gate record travels with every result so the audit can check
+    # label/evidence consistency (an answer claiming CITED must carry
+    # retrieval evidence; REFUSED must carry none).
+    ask_twhyne.last_gates = resp.get("gates")
+    ask_twhyne.last_evidence = resp.get("evidence")
     return text, resp.get("sources", []), resp.get("node_id", "")
 
 
@@ -399,7 +404,9 @@ def main():
                             "correct": local_ok, "latency_ok": lat_ok,
                             "cloud_pass": cloud_ok, "reason": reason,
                             "elapsed_s": elapsed, "node_id": node_id,
-                            "answer": answer, "sources": sources})
+                            "answer": answer, "sources": sources,
+                            "gates": getattr(ask_twhyne, "last_gates", None),
+                            "evidence": getattr(ask_twhyne, "last_evidence", None)})
 
     # Scripted scenario: cancellation must not poison the next answer.
     t0 = time.time()
