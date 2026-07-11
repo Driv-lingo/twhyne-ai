@@ -119,7 +119,12 @@ G = []
 
 
 def g(id_, prompt, **kw):
-    t = {"id": id_, "prompt": prompt, "use_rag": True}
+    # Ordinary grounded QA runs as an authorized internal role ("staff" has
+    # read access to every non-confidential benchmark doc under the policy
+    # the harness installs). Without a role the server defaults to "public",
+    # which the policy correctly denies — grounded QA would then measure the
+    # permission layer, not retrieval. Permission tasks set their own roles.
+    t = {"id": id_, "prompt": prompt, "use_rag": True, "role": "staff"}
     t.update(kw)
     G.append(t)
 

@@ -305,6 +305,28 @@ def main():
         except Exception as e:
             print(f"  (permission policy not installed: {e})\n")
 
+        # FAIL-FAST GUARD: standard grounded QA must run as a role that can
+        # actually see the corpus. If a probe question returns zero sources,
+        # every grounded task would fail identically ("not in my provided
+        # sources") and the run would measure the access config, not the
+        # system. Abort loudly instead of producing a misleading report.
+        probe_role = next((t.get("role") for t in tasks.get("grounded_qa", [])
+                           if t.get("role")), "staff")
+        try:
+            _, probe_sources, _ = ask_twhyne(
+                base, "Which fall risk scale does the facility use?",
+                dataset_id, use_rag=True, role=probe_role)
+        except Exception as e:
+            sys.exit(f"ABORT: grounded-QA probe failed outright: {e}")
+        if not probe_sources:
+            sys.exit(
+                f"ABORT: grounded-QA probe as role '{probe_role}' retrieved zero "
+                f"authorized sources. The permission policy is blocking the "
+                f"benchmark corpus for this role — fix the access model (or the "
+                f"task roles) before running; results would be meaningless.")
+        print(f"  grounded-QA probe ok as role '{probe_role}' "
+              f"({len(probe_sources)} source(s) authorized)\n")
+
     results = []
     cat_stats = {}
     for category, items in tasks.items():

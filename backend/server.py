@@ -1094,9 +1094,28 @@ def create_app():
                     should_ground = False
 
             if forced and not context:
-                msg = "I don't have that in my provided sources."
+                # Distinguish two cases the user must be able to tell apart:
+                #   no source exists           -> "not in my provided sources"
+                #   sources exist, role denied -> "not authorized for this role"
+                # Collapsing them makes a permission denial look like a
+                # knowledge gap (and turns misconfiguration into silence).
+                denied = []
+                try:
+                    if dataset_id:
+                        denied = get_rag_manager().denied_sources(
+                            dataset_id, role, query=prompt)
+                except Exception:
+                    denied = []
+                if denied:
+                    msg = (f"I'm not authorized to access the sources for this "
+                           f"under your role ('{role}'). "
+                           f"{len(denied)} source(s) in this dataset are outside "
+                           f"this role's permissions.")
+                else:
+                    msg = "I don't have that in my provided sources."
                 return jsonify({'result': msg, 'response': msg,
-                                'node_id': 'language-mistral-7b', 'sources': []})
+                                'node_id': 'language-mistral-7b', 'sources': [],
+                                'denied_sources': len(denied)})
 
             if should_ground and context:
                 # EXTRACTIVE FAST PATH: for a direct fact question with high

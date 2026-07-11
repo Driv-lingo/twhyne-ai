@@ -389,6 +389,36 @@ class SemanticRAGManager:
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]
 
+    def denied_sources(self, dataset_id: str, role: str = "public",
+                       query: str = "") -> List[str]:
+        """Distinct sources this role may NOT access that look relevant.
+
+        Lets the caller distinguish "nothing relevant exists" from "relevant
+        material may exist but this role is not permitted to see it" — two
+        cases that must not collapse into the same user-facing answer. When a
+        query is given, only denied documents with real lexical overlap count
+        as relevant, so an unrelated restricted document does not turn every
+        unknown question into a false "not authorized". Returns source names
+        only, never content.
+        """
+        if dataset_id not in self.datasets:
+            return []
+        qwords = _content_words(query) if query else set()
+        need = min(2, len(qwords)) if qwords else 0
+        denied = []
+        seen_denied = set()
+        for doc in self.datasets[dataset_id].get("documents", []):
+            src = doc.get("source", "")
+            if src in seen_denied or self._doc_allowed(doc, role):
+                continue
+            if qwords:
+                overlap = len(qwords.intersection(_content_words(doc["content"])))
+                if overlap < need:
+                    continue
+            seen_denied.add(src)
+            denied.append(src)
+        return denied
+
     def _chunk_text(self, text: str, chunk_size: int = 350, overlap: int = 50) -> List[str]:
         if not text:
             return []
