@@ -260,9 +260,12 @@ function App() {
       });
       
       // Add expert nodes around the kernel - adjusted positions to prevent cutoff
+      // The code node id depends on which model is installed (Qwen default,
+      // CodeLlama legacy), so resolve it from the live node list.
+      const codeNodeId = Object.keys(nodeData).find(id => id.startsWith('code-')) || 'code-qwen-coder-7b';
       const expertNodes = [
         { id: 'language-mistral-7b', label: 'Language', type: 'language', position: { x: 50, y: 50 } },
-        { id: 'code-codellama-7b', label: 'Code', type: 'code', position: { x: 350, y: 50 } },
+        { id: codeNodeId, label: 'Code', type: 'code', position: { x: 350, y: 50 } },
         { id: 'math-llm-eval', label: 'Math', type: 'math', position: { x: 50, y: 350 } },
         { id: 'vision-llava-1.6-7b', label: 'Vision', type: 'vision', position: { x: 350, y: 350 } },
         { id: 'planner-mistral-7b', label: 'Planner', type: 'planner', position: { x: 380, y: 200 } }
@@ -351,7 +354,7 @@ function App() {
       // Add expert nodes (all offline) - adjusted positions to prevent cutoff
       const expertNodes = [
         { id: 'language-mistral-7b', label: 'Language', type: 'language', position: { x: 50, y: 50 } },
-        { id: 'code-codellama-7b', label: 'Code', type: 'code', position: { x: 350, y: 50 } },
+        { id: 'code-qwen-coder-7b', label: 'Code', type: 'code', position: { x: 350, y: 50 } },
         { id: 'math-llm-eval', label: 'Math', type: 'math', position: { x: 50, y: 350 } },
         { id: 'vision-llava-1.6-7b', label: 'Vision', type: 'vision', position: { x: 350, y: 350 } },
         { id: 'planner-mistral-7b', label: 'Planner', type: 'planner', position: { x: 380, y: 200 } }
@@ -743,7 +746,7 @@ function App() {
                 <div className="node-icon code">C</div>
                 <div className="node-info">
                   <h4>Code</h4>
-                  <p>CodeLlama-7B for programming and code generation</p>
+                  <p>Qwen2.5-Coder-7B for verified programming and code generation</p>
                 </div>
               </div>
               <div className="help-node">
