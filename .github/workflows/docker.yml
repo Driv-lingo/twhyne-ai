@@ -45,8 +45,10 @@ jobs:
 
       - name: Smoke test 2 - backend boots and answers exact math
         run: |
-          docker run -d --name smoke --entrypoint python3 -p 5002:5002 \
-            twhyne/twhyne:candidate /app/backend/server.py
+          # Production images ship bytecode only; boot whichever exists.
+          docker run -d --name smoke --entrypoint sh -p 5002:5002 \
+            twhyne/twhyne:candidate -c \
+            'cd /app/backend && if [ -f server.pyc ]; then exec python3 server.pyc; else exec python3 server.py; fi'
           ok=""
           for i in $(seq 1 30); do
             if curl -fs http://localhost:5002/status > /dev/null; then ok=1; break; fi

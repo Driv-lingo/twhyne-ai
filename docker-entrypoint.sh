@@ -31,7 +31,12 @@ fi
 # Start backend
 echo "Starting backend on :5002 ..."
 cd /app/backend
-python3 server.py &
+# Production images ship bytecode only (server.pyc); dev builds keep .py.
+if [ -f server.pyc ]; then
+    python3 server.pyc &
+else
+    python3 server.py &
+fi
 BACKEND_PID=$!
 
 # Give the backend a moment, then serve the frontend

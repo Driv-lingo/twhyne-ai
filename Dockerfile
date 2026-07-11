@@ -42,6 +42,22 @@ RUN pip install --no-cache-dir llama-cpp-python==0.3.2
 COPY backend/ /app/backend/
 COPY --from=frontend /app/frontend/build /app/frontend/build
 
+# IP hardening: the shipped image must not contain readable application
+# source. Compile the backend to bytecode (-b writes server.pyc next to
+# server.py) and delete the .py files. Bytecode is not encryption - it
+# raises the cost of inspection from "open the file" to "decompile and
+# reconstruct"; the crown-jewel modules move to native compilation next.
+RUN python -m compileall -b -q /app/backend \
+    && find /app/backend -name "*.py" -delete \
+    && (find /app/backend -name "__pycache__" -type d -exec rm -rf {} + || true)
+
+# Strip build tooling from the final image (remove source, strip build
+# tools). The compiled llama engine needs only the runtime libraries.
+RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 libgomp1 \
+    && apt-get purge -y build-essential && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip uninstall -y cmake ninja
+
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
