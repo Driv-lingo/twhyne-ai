@@ -1,0 +1,32 @@
+# Opt-in HARDENED image: crown-jewel modules compiled to native .so via
+# Nuitka, so they are not present even as bytecode. This is a SEPARATE build
+# from the default twhyne/twhyne:cpu (which ships bytecode) - it is heavier
+# to build and is validated on its own, so a Nuitka failure can never block
+# the primary release the benchmark and installers depend on.
+#
+#   docker build -f Dockerfile.native -t twhyne/twhyne:hardened .
+#
+# Protected modules (the orchestration/verification/permission IP):
+#   identity.py  rag_manager.py  (extend as the core stabilizes)
+# server.py stays bytecode (it is the Flask entrypoint; compiling the whole
+# app as one binary is the next rung, gated behind this proving out).
+
+FROM python:3.11-bullseye AS build
+WORKDIR /app
+RUN pip install --no-cache-dir nuitka==2.4.8 "numpy<2"
+COPY backend/ /app/backend/
+# Compile selected modules to .so extension modules, then remove their source.
+RUN cd /app/backend \
+    && for mod in identity rag_manager; do \
+         python -m nuitka --module "$mod.py" --output-dir=. --remove-output \
+         && rm -f "$mod.py"; \
+       done \
+    && ls *.so
+
+FROM twhyne/twhyne:cpu
+# Overlay the compiled modules on top of the proven runtime image, replacing
+# their bytecode counterparts.
+COPY --from=build /app/backend/*.so /app/backend/
+RUN find /app/backend -maxdepth 1 -name "identity.pyc" -delete; \
+    find /app/backend -maxdepth 1 -name "rag_manager.pyc" -delete; \
+    python3 -c "import sys; sys.path.insert(0,'/app/backend'); import identity, rag_manager; print('native modules import OK')"

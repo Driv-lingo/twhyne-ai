@@ -226,6 +226,80 @@ def _extractive_answer(prompt, kept, top_score):
             f'Exact extract from the source document - no model generation involved.'), source, sentence
 
 
+POLICY_CONSOLE_HTML = r"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Twhyne - Policy & Identity</title>
+<style>
+:root{--bg:#07060b;--panel:#141020;--line:rgba(157,123,255,.16);--fg:#efeaf7;--muted:#a99fc0;
+--violet:#9d7bff;--wine:#d34a67;--verify:#3ce88f;--refuse:#ff7a6b}
+*{box-sizing:border-box;margin:0}body{background:var(--bg);color:var(--fg);
+font-family:ui-sans-serif,system-ui,sans-serif;padding:28px;line-height:1.5}
+.wrap{max-width:900px;margin:0 auto}h1{font-size:22px;margin-bottom:4px}
+.sub{color:var(--muted);font-size:14px;margin-bottom:22px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;margin-bottom:16px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px;
+font-family:ui-monospace,monospace}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;font-family:ui-monospace,monospace}
+input,textarea,select{width:100%;background:#0e0b16;border:1px solid var(--line);border-radius:6px;
+color:var(--fg);padding:9px 11px;font-family:ui-monospace,monospace;font-size:13px}
+textarea{min-height:230px;white-space:pre;overflow-wrap:normal;overflow-x:auto}
+button{background:linear-gradient(96deg,var(--wine),var(--violet));color:#fff;border:0;border-radius:6px;
+padding:10px 16px;font-weight:600;cursor:pointer;font-family:ui-monospace,monospace;margin-top:12px}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:150px}
+.msg{margin-top:12px;font-family:ui-monospace,monospace;font-size:13px;padding:9px 12px;border-radius:6px;display:none}
+.msg.ok{display:block;background:rgba(60,232,143,.1);color:var(--verify);border:1px solid rgba(60,232,143,.4)}
+.msg.err{display:block;background:rgba(255,122,107,.1);color:var(--refuse);border:1px solid rgba(255,122,107,.4)}
+code{background:#0e0b16;padding:2px 6px;border-radius:4px;font-size:12px;color:var(--violet)}
+.tok{word-break:break-all;font-size:12px;color:var(--verify);margin-top:8px}
+</style></head><body><div class="wrap">
+<h1>Twhyne &mdash; Policy &amp; Identity Console</h1>
+<div class="sub">Edit the access policy and mint signed identity tokens. Runs against this local runtime.</div>
+
+<div class="card"><h2>Admin token</h2>
+<div class="sub" style="margin:0 0 8px">Required when the runtime has <code>TWHYNE_ADMIN_TOKEN</code> set. Stored only in this tab.</div>
+<input id="admtok" type="password" placeholder="X-Admin-Token (leave blank on fresh install)"></div>
+
+<div class="card"><h2>Access policy</h2>
+<div class="sub" style="margin:0 0 6px">Per-source roles decide who can retrieve which documents. Edit the JSON, then save.</div>
+<textarea id="policy" spellcheck="false"></textarea>
+<div class="row"><button class="ghost" onclick="loadPolicy()">Reload</button><button onclick="savePolicy()">Save policy</button></div>
+<div class="msg" id="pmsg"></div></div>
+
+<div class="card"><h2>Mint identity token</h2>
+<div class="sub" style="margin:0 0 6px">A signed token binds a user to a role. Send it as <code>Authorization: Bearer &lt;token&gt;</code>; it cannot be overridden by a request body.</div>
+<div class="row">
+<div><label>Subject (user id / email)</label><input id="subj" placeholder="nurse@facility"></div>
+<div><label>Role</label><select id="role">
+<option>public</option><option>staff</option><option>nurse</option><option>family_contact</option>
+<option>it_admin</option><option>auditor</option><option>admin</option></select></div>
+</div>
+<button onclick="mint()">Issue token</button>
+<div class="msg" id="imsg"></div><div class="tok" id="tok"></div></div>
+
+</div><script>
+function hdrs(){var h={'Content-Type':'application/json'};var t=document.getElementById('admtok').value.trim();
+if(t)h['X-Admin-Token']=t;return h;}
+function msg(id,t,k){var m=document.getElementById(id);m.textContent=t;m.className='msg '+k;}
+async function loadPolicy(){try{var r=await fetch('/api/permissions');var d=await r.json();
+document.getElementById('policy').value=JSON.stringify(d,null,2);msg('pmsg','Loaded current policy.','ok');}
+catch(e){msg('pmsg','Could not load: '+e,'err');}}
+async function savePolicy(){var raw=document.getElementById('policy').value;var body;
+try{body=JSON.parse(raw);}catch(e){msg('pmsg','Invalid JSON: '+e.message,'err');return;}
+try{var r=await fetch('/api/permissions',{method:'POST',headers:hdrs(),body:JSON.stringify(body)});
+var d=await r.json();if(r.ok&&d.success){msg('pmsg','Policy saved and active.','ok');}
+else{msg('pmsg',d.error||'Save failed','err');}}catch(e){msg('pmsg','Error: '+e,'err');}}
+async function mint(){var subject=document.getElementById('subj').value.trim();
+var role=document.getElementById('role').value;if(!subject){msg('imsg','Enter a subject.','err');return;}
+try{var r=await fetch('/api/identity/token',{method:'POST',headers:hdrs(),
+body:JSON.stringify({subject:subject,role:role})});var d=await r.json();
+if(r.ok&&d.token){msg('imsg','Token issued for '+subject+' ('+role+'), valid '+(d.expires_in/3600)+'h.','ok');
+document.getElementById('tok').textContent=d.token;}
+else{msg('imsg',d.error||'Failed','err');document.getElementById('tok').textContent='';}}
+catch(e){msg('imsg','Error: '+e,'err');}}
+loadPolicy();
+</script></body></html>"""
+
+
 def _evidence_records(kept, span=None, span_source=None):
     """Typed evidence records for the chunks an answer drew on.
 
@@ -1005,7 +1079,8 @@ def create_app():
                        'generated')
                 gates = {
                     'identity': {'role': data.get('role') or req_body.get('role', 'public'),
-                                 'signed': False},   # roadmap: signed identity
+                                 'signed': bool(getattr(__import__('flask').g,
+                                                        'role_signed', False))},
                     'permission': {'enforced': True,
                                    'denied_sources': int(data.get('denied_sources') or 0)},
                     'retrieval': {'grounded': bool(data.get('grounded')),
@@ -1056,7 +1131,16 @@ def create_app():
             client_rid = str(data.get('client_request_id', '') or '').strip()
             # Role drives permission-before-retrieval: unauthorized documents
             # never enter the candidate set. Default 'public' = least access.
-            role = str(data.get('role', 'public') or 'public').strip().lower()
+            # SIGNED IDENTITY: a valid Bearer token's role is authoritative and
+            # cannot be overridden by the request body; without a token the
+            # role falls back to 'public' (or a body-asserted role only when
+            # signed identity is not required - preserves the dev workflow).
+            from identity import resolve_role
+            from flask import g as _g
+            role, role_signed, id_err = resolve_role(request, data)
+            _g.role_signed = role_signed
+            if id_err:
+                return jsonify({'error': id_err, 'identity_required': True}), 401
             _set_progress('routing')
 
             from flux_nodes.base import Query
@@ -1520,6 +1604,42 @@ def create_app():
             })
         return jsonify({'chain_intact': ok, 'records': count, 'broken_at': broken})
 
+    @app.route('/api/identity/token', methods=['POST'])
+    def identity_token():
+        """Issue a signed identity token for a subject+role.
+
+        Gated by TWHYNE_ADMIN_TOKEN when set (only an operator mints
+        identities); open on a fresh local install so the first admin can
+        bootstrap. Body: {subject, role, ttl_seconds?}.
+        """
+        from identity import issue_token
+        admin_token = os.environ.get('TWHYNE_ADMIN_TOKEN', '').strip()
+        if admin_token:
+            supplied = request.headers.get('X-Admin-Token', '').strip()
+            if not supplied or not _hmac_equal(supplied, admin_token):
+                return jsonify({'error': 'Unauthorized'}), 401
+        body = request.get_json(silent=True) or {}
+        subject = str(body.get('subject') or '').strip()
+        role = str(body.get('role') or 'public').strip().lower()
+        if not subject:
+            return jsonify({'error': 'subject required'}), 400
+        try:
+            ttl = int(body.get('ttl_seconds') or 43200)
+            tok = issue_token(subject, role, ttl_seconds=ttl)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        return jsonify({'token': tok, 'subject': subject, 'role': role,
+                        'expires_in': ttl}), 200
+
+    @app.route('/api/identity/whoami', methods=['GET', 'POST'])
+    def identity_whoami():
+        """Resolve the role the caller's token/headers would be granted."""
+        from identity import resolve_role
+        body = request.get_json(silent=True) or {}
+        role, signed, err = resolve_role(request, body)
+        return jsonify({'role': role, 'signed': signed,
+                        'error': err}), (401 if err else 200)
+
     @app.route('/api/admin/alerts', methods=['GET'])
     def admin_alerts():
         """Suspicious / notable security events derived from the audit ledger.
@@ -1641,14 +1761,31 @@ def create_app():
 
     @app.route('/api/permissions', methods=['POST', 'OPTIONS'])
     def set_permissions():
-        """Replace the access policy. Body is the policy document."""
+        """Replace the access policy. Body is the policy document.
+
+        Admin-gated when TWHYNE_ADMIN_TOKEN is set: changing who can see what
+        is the most security-critical write in the system, so it must not be
+        an anonymous call in a configured deployment. Open on a fresh local
+        install so the benchmark and first-run setup still work.
+        """
         if request.method == 'OPTIONS':
             return '', 200
+        admin_token = os.environ.get('TWHYNE_ADMIN_TOKEN', '').strip()
+        if admin_token:
+            supplied = request.headers.get('X-Admin-Token', '').strip()
+            if not supplied or not _hmac_equal(supplied, admin_token):
+                return jsonify({'error': 'Unauthorized - admin token required '
+                                'to change the access policy'}), 401
         try:
             get_rag_manager().set_permissions(request.get_json() or {})
             return jsonify({'success': True, 'permissions': get_rag_manager().get_permissions()})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+
+    @app.route('/admin/policy', methods=['GET'])
+    def policy_console():
+        """Self-contained policy + identity console (no React build needed)."""
+        return POLICY_CONSOLE_HTML, 200, {'Content-Type': 'text/html'}
 
     @app.route('/api/rag/status', methods=['GET'])
     def rag_status():

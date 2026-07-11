@@ -1,0 +1,24 @@
+# Hosted test instance for black-box freelancer testing.
+# Testers reach ONLY the web UI on the host you run this on; they never
+# receive the image, source, or shell. Run on a box you control.
+#
+#   TWHYNE_ADMIN_TOKEN, SNF_LICENSE_KEY must be set in the environment.
+#   Put synthetic/public documents in ./test-corpus (never production data).
+services:
+  twhyne:
+    image: twhyne/twhyne:cpu
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"   # bind to localhost; put a reverse proxy in front
+      - "127.0.0.1:5002:5002"
+    environment:
+      SNF_LICENSE_KEY: "${SNF_LICENSE_KEY}"
+      TWHYNE_ADMIN_TOKEN: "${TWHYNE_ADMIN_TOKEN}"
+      # Testers must present signed tokens; body-asserted roles are refused,
+      # so a tester cannot self-escalate by editing a request.
+      TWHYNE_REQUIRE_SIGNED_IDENTITY: "true"
+      TWHYNE_IDENTITY_SECRET: "${TWHYNE_IDENTITY_SECRET}"
+      LICENSE_API_URL: "https://twhyne.com"
+    volumes:
+      - ./models:/app/models
+      - ./test-corpus:/app/backend/rag_storage/seed:ro
