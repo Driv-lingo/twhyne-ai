@@ -107,7 +107,7 @@ const nodeTooltips = {
   math: "Mathematical computation and equation solving",
   vision: "Image understanding and visual content analysis",
   planner: "Task planning and workflow decomposition",
-  claude: "Advanced reasoning via remote API (requires internet)"
+  claude: "Not available - Twhyne runs fully local"
 };
 
 function App() {
@@ -296,28 +296,6 @@ function App() {
         });
       });
       
-      // Add Claude node if enabled
-      if (useRemote) {
-        flowNodes.push({
-          id: 'claude',
-          type: 'customNode',
-          data: { 
-            label: 'Claude', 
-            type: 'claude',
-            status: 'online',
-            description: 'Remote expert',
-            tooltip: nodeTooltips.claude
-          },
-          position: { x: 0, y: 200 },
-        });
-        
-        flowEdges.push({
-          id: 'kernel-to-claude',
-          source: 'kernel',
-          target: 'claude',
-          animated: processingNode === 'claude'
-        });
-      }
       
       setNodes(flowNodes);
       setEdges(flowEdges);
@@ -386,7 +364,7 @@ function App() {
       setNodes(flowNodes);
       setEdges(flowEdges);
     }
-  }, [setNodes, setEdges, useRemote, processingNode]);
+  }, [setNodes, setEdges, processingNode]);
   
   // Initial fetch
   useEffect(() => {
@@ -707,7 +685,7 @@ function App() {
       <header className="header">
           <div className="logo">
           <h1><span className="highlight">Twhyne</span></h1>
-          <div className="subtitle">Intelligent Multi-Modal AI System</div>
+          <div className="subtitle">Local-first verified AI &mdash; permissioned &amp; auditable</div>
             </div>
         <div className="status-bar">
           <div className="status-item">
@@ -731,7 +709,7 @@ function App() {
             <button className="close-help" onClick={() => setShowHelpOverlay(false)}>×</button>
             
             <h3>What is Twhyne?</h3>
-            <p>Twhyne is an intelligent multi-modal AI system that seamlessly routes your queries to specialized expert models for optimal results.</p>
+            <p>Twhyne routes every question to the cheapest capability that can answer it verifiably - exact math, a quoted document span, verified code, or a local model - under your roles and permissions, with a tamper-evident audit trail. Nothing leaves your machine.</p>
             
             <h3>Expert Nodes</h3>
             <div className="help-nodes">
@@ -739,7 +717,7 @@ function App() {
                 <div className="node-icon language">L</div>
                 <div className="node-info">
                   <h4>Language</h4>
-                  <p>Mistral-7B-Instruct for general text queries</p>
+                  <p>Mistral-7B for grounded answers, synthesis and summaries</p>
                 </div>
               </div>
               <div className="help-node">
@@ -753,7 +731,7 @@ function App() {
                 <div className="node-icon math">M</div>
                 <div className="node-info">
                   <h4>Math</h4>
-                  <p>SymPy sandbox for mathematical calculations</p>
+                  <p>SymPy symbolic engine - exact answers, zero model time</p>
                 </div>
               </div>
               <div className="help-node">
@@ -767,14 +745,14 @@ function App() {
                 <div className="node-icon planner">P</div>
                 <div className="node-info">
                   <h4>Planner</h4>
-                  <p>TaskWeaver-3B for planning and task decomposition</p>
+                  <p>Mistral-7B for planning and task decomposition</p>
                 </div>
               </div>
               <div className="help-node">
-                <div className="node-icon claude">A</div>
+                <div className="node-icon planner">+</div>
                 <div className="node-info">
-                  <h4>Claude</h4>
-                  <p>Optional remote Claude 3.7 for advanced reasoning (requires internet)</p>
+                  <h4>Your models</h4>
+                  <p>Import any Hugging Face GGUF as a governed node with its own role permissions (admin console)</p>
                 </div>
               </div>
             </div>
@@ -789,7 +767,7 @@ function App() {
                     handleExampleQuery(eq.text, eq.node);
                     setShowHelpOverlay(false);
                   }}
-                  disabled={isLoading || (eq.node === 'claude' && !useRemote)}
+                  disabled={isLoading}
                   title={nodeTooltips[eq.node]}
                 >
                   <span className="query-icon">{eq.icon}</span>
@@ -900,16 +878,7 @@ function App() {
                   />
                 </div>
                 
-                <label className="remote-toggle" title="Enable Claude for advanced reasoning (requires internet)">
-                    <input
-                      type="checkbox"
-                      checked={useRemote}
-                    onChange={() => setUseRemote(!useRemote)}
-                    disabled={isLoading}
-                    />
-                    Use Claude
-                  </label>
-                
+
                 <div className="keyboard-shortcut-hint">
                   <FaKeyboard />
                   <span>Ctrl+Enter to submit</span>
@@ -1017,7 +986,7 @@ function App() {
       </div>
       
       <footer className="footer">
-        <div>Twhyne • v1.0 • Intelligent Multi-Modal AI System</div>
+        <div>Twhyne • local-first • every answer computed, cited, verified, or refused</div>
       </footer>
     </div>
   );
