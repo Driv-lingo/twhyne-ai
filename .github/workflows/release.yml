@@ -32,11 +32,23 @@ jobs:
 
           1. Install Docker Desktop (https://www.docker.com/products/docker-desktop/)
              and open it once.
+
           2. Double-click "Twhyne AI Launcher.command".
-             If macOS says it cannot verify the developer:
-             RIGHT-CLICK the file -> Open -> Open.
-          3. Enter your TWHYNE-... license key when prompted.
-          4. The app opens at http://localhost:3000
+
+          3. macOS will block it the first time ("Apple could not verify..."):
+             - Click DONE (do NOT click Move to Trash).
+             - Open  System Settings > Privacy & Security.
+             - Scroll to the Security section. You will see:
+               "Twhyne AI Launcher.command" was blocked   [ Open Anyway ]
+             - Click OPEN ANYWAY, authenticate, then confirm Open.
+             This is only needed once.
+
+             (Terminal alternative: open Terminal and run
+              xattr -d com.apple.quarantine "/Volumes/Twhyne AI/Twhyne AI Launcher.command"
+              then double-click the launcher.)
+
+          4. Enter your TWHYNE-... license key when prompted.
+          5. The app opens at http://localhost:3000
 
           Everything runs on this Mac. Nothing leaves your machine.
           EOT
