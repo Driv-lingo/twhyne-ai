@@ -151,6 +151,14 @@ function App() {
 
   // Help overlay state
   const [showHelpOverlay, setShowHelpOverlay] = useState(false);
+  const [graphCollapsed, setGraphCollapsed] = useState(() => {
+    try { return localStorage.getItem('twhyne_graph_collapsed') === '1'; } catch (e) { return false; }
+  });
+  const toggleGraph = () => setGraphCollapsed(v => {
+    const nv = !v;
+    try { localStorage.setItem('twhyne_graph_collapsed', nv ? '1' : '0'); } catch (e) {}
+    return nv;
+  });
   
   // Toggle help overlay
   const toggleHelp = () => {
@@ -960,7 +968,12 @@ function App() {
         </div>
         
         {/* Right panel with graph visualization */}
-        <div className="right-panel">
+        <div className={`right-panel ${graphCollapsed ? 'collapsed' : ''}`}>
+          <button className="graph-toggle" onClick={toggleGraph}
+            title={graphCollapsed ? 'Show node activity' : 'Hide node activity'}
+            aria-label={graphCollapsed ? 'Show node activity' : 'Hide node activity'}>
+            {graphCollapsed ? '‹ nodes' : 'nodes ›'}
+          </button>
           <div className="graph-container">
             <ErrorBoundary>
               <ReactFlow

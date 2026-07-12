@@ -638,3 +638,21 @@ body {
 .starter-text{ color:#eef1f6; font-size:14px; }
 .starter-hint{ font-family:'IBM Plex Mono', monospace; font-size:10.5px;
   letter-spacing:.1em; text-transform:uppercase; color:#6b7280; }
+
+/* ---- Chat is the hero; node graph is a companion you can hide ---- */
+.left-panel{ flex:1.7 1 0 !important; min-width:460px !important; }
+.right-panel{ flex:1 1 0 !important; min-width:0 !important; max-width:520px;
+  position:relative; transition:flex .25s ease, max-width .25s ease, min-width .25s ease; }
+.right-panel.collapsed{ flex:0 0 0 !important; max-width:0 !important; min-width:0 !important;
+  overflow:hidden; }
+.right-panel.collapsed .graph-container{ opacity:0; }
+.graph-toggle{ position:absolute; top:8px; left:-1px; transform:translateX(-100%);
+  z-index:5; background:rgba(10,12,16,.9); color:#aeb6c2;
+  border:1px solid rgba(255,255,255,.14); border-right:none;
+  font-family:'IBM Plex Mono', monospace; font-size:10.5px; letter-spacing:.12em;
+  text-transform:uppercase; padding:6px 9px; cursor:pointer; }
+.graph-toggle:hover{ color:#eef1f6; border-color:rgba(255,255,255,.3); }
+.right-panel.collapsed .graph-toggle{ left:0; }
+@media (max-width: 900px){
+  .right-panel{ display:none; }  /* on narrow screens, chat only */
+}
