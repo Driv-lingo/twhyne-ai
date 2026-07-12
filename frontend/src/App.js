@@ -19,6 +19,7 @@ import FeedbackButtons from './components/FeedbackButtons';
 import ConversationManager from './components/ConversationManager';
 import './components/ConversationManager.css';
 import RAGManager from './components/RAGManager';
+import { TrustStrip, MessageBody } from './components/TrustLayer';
 import './components/RAGManager.css';
 import { 
   FaCode, 
@@ -450,7 +451,10 @@ function App() {
         if (activeRequestRef.current !== myRequestId) return;
         const assistantTurn = {
           role: 'assistant',
-          content: queryRes.data.response
+          content: queryRes.data.response,
+          node: queryRes.data.node_id,
+          gates: queryRes.data.gates,
+          sources: queryRes.data.sources,
         };
         setHistory(prev => [...prev, assistantTurn]);
         setResponse(queryRes.data.response);
@@ -476,7 +480,10 @@ function App() {
         if (activeRequestRef.current !== myRequestId) return;
         const assistantTurn = {
           role: 'assistant',
-          content: res.data.response
+          content: res.data.response,
+          node: res.data.node_id,
+          gates: res.data.gates,
+          sources: res.data.sources,
         };
         setHistory(prev => [...prev, assistantTurn]);
         setResponse(res.data.response);
@@ -540,8 +547,9 @@ function App() {
       const assistantTurn = {
         role: 'assistant',
         content: res.data.result || res.data.response,
-        node: activeNodeId,
-        time: Date.now()
+        node: res.data.node_id || activeNodeId,
+        gates: res.data.gates,
+        sources: res.data.sources,
       };
       
       setHistory(prev => [...prev, assistantTurn]);
@@ -820,17 +828,32 @@ function App() {
               <div className="chat-messages">
               {history.length === 0 ? (
                   <div className="empty-history">
-                  <p>No messages yet. Start by typing a query or click the help icon to see examples.</p>
+                  <p>Ask a question. Twhyne routes it to the right capability, checks the evidence, and labels every answer by how it was earned.</p>
+                  <div className="starter-chips">
+                    {[
+                      { t: 'What is 4,096 divided by 16?', h: 'exact math' },
+                      { t: 'Write a function to reverse a linked list', h: 'verified code' },
+                      { t: 'Summarize the key points of the uploaded document', h: 'cited answer' },
+                    ].map((s, i) => (
+                      <button key={i} className="starter-chip" onClick={() => { setQuery(s.t); }}>
+                        <span className="starter-text">{s.t}</span>
+                        <span className="starter-hint">{s.h}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : (
                   history.map((msg, index) => (
                     <div key={index} className={`chat-bubble ${msg.role} ${msg.error ? 'error' : ''}`}>
                       <span className="chat-meta">
                         {msg.role === 'user' ? 'You' : msg.role === 'system' ? 'System' : 'Twhyne'}
-                        {msg.role === 'assistant' && msg.node && ` • ${msg.node} node`}
-                        {msg.role === 'assistant' && msg.time && ` • ${msg.time}ms`}
                       </span>
-                      {msg.content}
+                      {msg.role === 'assistant'
+                        ? <MessageBody content={msg.content} />
+                        : msg.content}
+                      {msg.role === 'assistant' && (msg.gates || msg.node) && (
+                        <TrustStrip node={msg.node} gates={msg.gates} sources={msg.sources} />
+                      )}
                   </div>
                 ))
               )}
@@ -854,10 +877,10 @@ function App() {
                 ref={queryInputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Enter your query here... (Ctrl+Enter to submit)"
+                placeholder="Ask anything — it will be routed, verified, and labeled. (Enter to send, Shift+Enter for a new line)"
                 disabled={isLoading}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && e.ctrlKey) {
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
                     handleSubmit();
                   }
@@ -881,7 +904,7 @@ function App() {
 
                 <div className="keyboard-shortcut-hint">
                   <FaKeyboard />
-                  <span>Ctrl+Enter to submit</span>
+                  <span>Enter to send · Shift+Enter for newline</span>
                 </div>
                 
                 <button

@@ -609,3 +609,32 @@ body {
     font-size: 2rem;
   }
 }
+
+/* ---- Trust layer: how every answer was earned ---- */
+.trust-strip{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px;
+  margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,.09);
+  font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:11px; }
+.trust-chip{ letter-spacing:.1em; font-weight:600; padding:2px 9px;
+  border:1px solid currentColor; border-radius:0; }
+.trust-chip.verify{ color:#2fae6e; } .trust-chip.cite{ color:#5b8ecb; }
+.trust-chip.exec{ color:#9d86d9; } .trust-chip.warn{ color:#c99a3a; }
+.trust-chip.refuse{ color:#dc6458; } .trust-chip.muted{ color:#98a0ad; }
+.trust-node{ color:#aeb6c2; letter-spacing:.03em; }
+.trust-meta{ color:#7d8595; } .trust-meta.refuse-text{ color:#dc6458; }
+.trust-sources{ color:#8a93a2; }
+.trust-sources-label{ color:#6b7280; text-transform:uppercase; letter-spacing:.08em; }
+
+/* code answers read as code, not literal backticks */
+.msg-text{ white-space:pre-wrap; }
+
+/* recognition-over-recall empty state */
+.starter-chips{ display:flex; flex-direction:column; gap:10px; margin-top:20px;
+  max-width:440px; }
+.starter-chip{ display:flex; flex-direction:column; align-items:flex-start; gap:3px;
+  text-align:left; padding:12px 14px; background:rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.1); border-radius:0; cursor:pointer;
+  transition:border-color .18s, background .18s; }
+.starter-chip:hover{ border-color:rgba(255,255,255,.28); background:rgba(255,255,255,.05); }
+.starter-text{ color:#eef1f6; font-size:14px; }
+.starter-hint{ font-family:'IBM Plex Mono', monospace; font-size:10.5px;
+  letter-spacing:.1em; text-transform:uppercase; color:#6b7280; }
