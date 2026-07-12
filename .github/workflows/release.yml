@@ -17,22 +17,57 @@ permissions:
   contents: write
 
 jobs:
+  dmg:
+    name: Build real macOS DMG
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build DMG with hdiutil
+        run: |
+          mkdir -p staging dist
+          cp launch-twhyne.command "staging/Twhyne AI Launcher.command"
+          chmod +x "staging/Twhyne AI Launcher.command"
+          cat > "staging/READ ME FIRST.txt" <<'EOT'
+          Twhyne AI - macOS setup
+
+          1. Install Docker Desktop (https://www.docker.com/products/docker-desktop/)
+             and open it once.
+          2. Double-click "Twhyne AI Launcher.command".
+             If macOS says it cannot verify the developer:
+             RIGHT-CLICK the file -> Open -> Open.
+          3. Enter your TWHYNE-... license key when prompted.
+          4. The app opens at http://localhost:3000
+
+          Everything runs on this Mac. Nothing leaves your machine.
+          EOT
+          hdiutil create -volname "Twhyne AI" -srcfolder staging -ov -format UDZO dist/twhyne-ai.dmg
+          hdiutil verify dist/twhyne-ai.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg
+          path: dist/twhyne-ai.dmg
+
   release:
     name: Publish GitHub Release
+    needs: dmg
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build all launchers
+      - name: Build script launchers
         run: |
           mkdir -p dist
           # Windows
           cp launch-twhyne.bat dist/twhyne-ai-setup.bat
-          # macOS — ship the .command script directly (hdiutil is macOS-only)
-          cp launch-twhyne.command dist/twhyne-ai.dmg
           # Linux
           cp launch-twhyne.command dist/twhyne-ai.AppImage
           chmod +x dist/twhyne-ai.AppImage
+
+      - name: Fetch the real DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: dmg
+          path: dist
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
