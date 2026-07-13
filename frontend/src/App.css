@@ -113,6 +113,13 @@ body {
   background-color: #9e9e9e;
   color: white;
 }
+.node-status-detail {
+  margin-top: 5px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: #c99a3a;
+  max-width: 150px;
+}
 
 .node-status.starting {
   background-color: #ff9800;

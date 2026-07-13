@@ -77,28 +77,32 @@ const getNodeDescription = (type) => {
 };
 
 const CustomNode = ({ data }) => {
-  const { type, label, status, isProcessing } = data;
+  const { type, label, status, isProcessing, statusDetail } = data;
   const colors = getNodeColor(type);
   const nodeIcon = getNodeIcon(type);
   const description = getNodeDescription(type);
-  
+  const titleText = statusDetail ? `${label}: ${status} — ${statusDetail}` : `${label}: ${status}`;
+
   return (
-    <div className={`custom-node ${status} ${isProcessing ? 'processing' : ''}`} title={`${label}: ${status}`}>
+    <div className={`custom-node ${status} ${isProcessing ? 'processing' : ''}`} title={titleText}>
       <Handle
         type="target"
         position={Position.Top}
         style={{ background: colors.border }}
       />
-      
+
       <div className="node-body" style={{ background: colors.background, borderColor: colors.border }}>
         <div className="node-header">
           <div className="node-icon">{nodeIcon}</div>
           <div className="node-title">{label}</div>
         </div>
-        
+
         <div className="node-content">
           <div className="node-description">{description}</div>
           <div className={`node-status ${status}`}>{status}</div>
+          {status === 'offline' && statusDetail && (
+            <div className="node-status-detail">{statusDetail}</div>
+          )}
         </div>
         
         {isProcessing && (

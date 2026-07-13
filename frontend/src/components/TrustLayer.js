@@ -45,30 +45,64 @@ function trustLabel(gates) {
   }
 }
 
-export function TrustStrip({ node, gates, sources }) {
+export function TrustStrip({ node, gates, sources, evidence }) {
+  const [open, setOpen] = React.useState(false);
   const label = trustLabel(gates);
   const nodeName = friendlyNode(node);
+  const hasEvidence = Array.isArray(evidence) && evidence.length > 0;
   if (!label && !nodeName && (!sources || !sources.length)) return null;
   return (
-    <div className="trust-strip" role="group" aria-label="How this answer was produced">
-      {label && (
-        <span className={`trust-chip ${label.cls}`} title="How this answer was earned">
-          {label.text}
-        </span>
-      )}
-      {nodeName && <span className="trust-node">{nodeName}</span>}
-      {gates && gates.retrieval && gates.retrieval.passes > 1 && (
-        <span className="trust-meta" title="Retrieval ran an extra refinement pass">
-          {gates.retrieval.passes} retrieval passes
-        </span>
-      )}
-      {sources && sources.length > 0 && (
-        <span className="trust-sources" title="Sources cited">
-          <span className="trust-sources-label">sources:</span> {sources.join(', ')}
-        </span>
-      )}
-      {gates && gates.sensitive_request && gates.verdict === 'refused' && (
-        <span className="trust-meta refuse-text">sensitive request</span>
+    <div className="trust-wrap">
+      <div className="trust-strip" role="group" aria-label="How this answer was produced">
+        {label && (
+          <span className={`trust-chip ${label.cls}`} title="How this answer was earned">
+            {label.text}
+          </span>
+        )}
+        {nodeName && <span className="trust-node">{nodeName}</span>}
+        {gates && gates.retrieval && gates.retrieval.passes > 1 && (
+          <span className="trust-meta" title="Retrieval ran an extra refinement pass">
+            {gates.retrieval.passes} retrieval passes
+          </span>
+        )}
+        {sources && sources.length > 0 && (
+          <span className="trust-sources" title="Sources cited">
+            <span className="trust-sources-label">sources:</span> {sources.join(', ')}
+          </span>
+        )}
+        {gates && gates.sensitive_request && gates.verdict === 'refused' && (
+          <span className="trust-meta refuse-text">sensitive request</span>
+        )}
+        {hasEvidence && (
+          <button className="trust-evidence-toggle" onClick={() => setOpen(o => !o)}
+            aria-expanded={open}
+            title="Show the exact source passages this answer drew on">
+            {open ? 'hide evidence' : `evidence (${evidence.length})`}
+          </button>
+        )}
+      </div>
+      {hasEvidence && open && (
+        <ul className="trust-evidence" aria-label="Evidence records">
+          {evidence.map((e, i) => (
+            <li key={i} className="evidence-item">
+              <div className="evidence-head">
+                <span className="evidence-src">{e.source || 'source'}</span>
+                {typeof e.score === 'number' && (
+                  <span className="evidence-score" title="Retrieval similarity">
+                    {(e.score * 100).toFixed(0)}%
+                  </span>
+                )}
+                {e.support === 'quoted' && <span className="evidence-badge">quoted</span>}
+              </div>
+              {e.span && <blockquote className="evidence-span">"{e.span}"</blockquote>}
+              {e.content_sha && (
+                <div className="evidence-hash" title="Content hash - lets an auditor verify this exact passage against the audit ledger">
+                  sha256:{e.content_sha}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

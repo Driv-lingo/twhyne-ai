@@ -281,15 +281,19 @@ function App() {
       ];
       
       expertNodes.forEach(node => {
-        const status = nodeData[node.id] ? nodeData[node.id].status : 'offline';
+        const nd = nodeData[node.id];
+        const status = nd ? nd.status : 'offline';
         flowNodes.push({
           id: node.id,
           type: 'customNode',
-          data: { 
-            label: node.label, 
+          data: {
+            label: node.label,
             type: node.type,
             status: status,
             description: `${node.label} expert`,
+            // Nielsen: visibility of system status - when a node is offline,
+            // say WHY (e.g. "model not downloaded - re-run the launcher").
+            statusDetail: nd && nd.status_detail ? nd.status_detail : null,
             tooltip: nodeTooltips[node.type],
             isProcessing: processingNode === node.id
           },
@@ -463,6 +467,7 @@ function App() {
           node: queryRes.data.node_id,
           gates: queryRes.data.gates,
           sources: queryRes.data.sources,
+          evidence: queryRes.data.evidence,
         };
         setHistory(prev => [...prev, assistantTurn]);
         setResponse(queryRes.data.response);
@@ -492,6 +497,7 @@ function App() {
           node: res.data.node_id,
           gates: res.data.gates,
           sources: res.data.sources,
+          evidence: res.data.evidence,
         };
         setHistory(prev => [...prev, assistantTurn]);
         setResponse(res.data.response);
@@ -558,6 +564,7 @@ function App() {
         node: res.data.node_id || activeNodeId,
         gates: res.data.gates,
         sources: res.data.sources,
+        evidence: res.data.evidence,
       };
       
       setHistory(prev => [...prev, assistantTurn]);
@@ -860,7 +867,7 @@ function App() {
                         ? <MessageBody content={msg.content} />
                         : msg.content}
                       {msg.role === 'assistant' && (msg.gates || msg.node) && (
-                        <TrustStrip node={msg.node} gates={msg.gates} sources={msg.sources} />
+                        <TrustStrip node={msg.node} gates={msg.gates} sources={msg.sources} evidence={msg.evidence} />
                       )}
                   </div>
                 ))
