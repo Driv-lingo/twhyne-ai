@@ -15,10 +15,21 @@ if [ -z "$SNF_LICENSE_KEY" ]; then
 fi
 
 API_URL="${LICENSE_API_URL:-https://twhyne.com}"
+
+# Stable device id: persisted under the mounted rag_storage volume so it
+# survives image updates; hashed with the key (raw id never leaves the box).
+DEVICE_FILE="/app/backend/rag_storage/device_id"
+mkdir -p "$(dirname "$DEVICE_FILE")" 2>/dev/null || true
+if [ ! -s "$DEVICE_FILE" ]; then
+    ( cat /etc/machine-id 2>/dev/null || hostname || echo "unknown" ) > "$DEVICE_FILE"
+fi
+MACHINE_ID=$(printf '%s|%s' "$(cat "$DEVICE_FILE" 2>/dev/null)" "$SNF_LICENSE_KEY" \
+    | sha256sum | cut -c1-32)
+
 echo "Validating license against $API_URL ..."
 RESP=$(curl -s -X POST "$API_URL/api/validate" \
     -H "Content-Type: application/json" \
-    -d "{\"license_key\":\"$SNF_LICENSE_KEY\"}" || true)
+    -d "{\"license_key\":\"$SNF_LICENSE_KEY\",\"machine_id\":\"$MACHINE_ID\"}" || true)
 
 if echo "$RESP" | grep -qE '"valid"[[:space:]]*:[[:space:]]*true'; then
     echo "License valid."

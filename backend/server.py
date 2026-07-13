@@ -800,6 +800,44 @@ def _audit_counters_since(ts):
     return red, ref, total
 
 
+def _machine_id(key):
+    """Stable, non-reversible device id for this install.
+
+    Prefers a persisted uuid under the models/rag volume (survives image
+    updates), falls back to /etc/machine-id, then the hostname. Hashed with
+    the license key so the same hardware under two keys reads as two
+    devices and the raw machine id never leaves the box.
+    """
+    seed = None
+    try:
+        idfile = Path(os.environ.get(
+            'TWHYNE_LICENSE_STATE',
+            str(Path(__file__).parent / 'rag_storage' / 'license_state.json'))
+        ).parent / 'device_id'
+        if idfile.exists():
+            seed = idfile.read_text().strip()
+        else:
+            import uuid
+            seed = uuid.uuid4().hex
+            try:
+                idfile.parent.mkdir(parents=True, exist_ok=True)
+                idfile.write_text(seed)
+            except Exception:
+                pass
+    except Exception:
+        seed = None
+    if not seed:
+        for p in ('/etc/machine-id', '/var/lib/dbus/machine-id'):
+            try:
+                seed = Path(p).read_text().strip()
+                if seed:
+                    break
+            except Exception:
+                continue
+    seed = seed or os.environ.get('HOSTNAME', 'unknown')
+    return _hashlib.sha256((seed + '|' + key).encode()).hexdigest()[:32]
+
+
 def _license_heartbeat_once():
     """One validation ping with safety counters. Never raises."""
     key = os.environ.get('SNF_LICENSE_KEY', '').strip()
@@ -811,6 +849,11 @@ def _license_heartbeat_once():
     chain_ok, _, _ = _audit_verify()
     body = _json.dumps({
         'license_key': key,
+        # Stable per-install device id so the account page shows real
+        # devices. Derived from the license key + the machine's id (mounted
+        # from the host, else the container's) - stable across restarts,
+        # and non-reversible (a hash, never the raw machine id).
+        'machine_id': _machine_id(key),
         'telemetry': {
             'redactions': red,
             'refusals': ref,
