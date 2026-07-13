@@ -55,6 +55,36 @@ identity/role → authorized source set → retrieve only allowed docs/chunks
    today; all coordination is inside one process. This is the long-horizon
    architecture, not a near-term claim.
 
+## Cognitive roadmap (post-signed-identity)
+
+Twhyne already runs a cognitive loop offline: the adversarial benchmark ->
+failure autopsy -> fix -> rerun cycle is observe/predict/verify/learn with a
+human as the consolidation step, and the audit ledger is persistent episodic
+memory (every question, verdict, evidence hash, outcome). The cognitive work
+is moving that loop toward runtime WITHOUT letting learning escape the
+security boundaries - learned behavior can never override a permission, and
+nothing consolidates into knowledge without verification.
+
+Ordered, each gated on the layer before it:
+
+1. **Prediction records** - executed answers carry predicted vs observed
+   outcome and prediction_error in the gates (the code node already does
+   this implicitly; make it explicit and auditable).
+2. **Node reliability profiles** - benchmark history mined into per-node,
+   per-category accuracy/latency profiles consulted by the router. The
+   learning signal is verified benchmark evidence only, never raw user
+   interaction - poisoning-resistant by construction.
+3. **Episodic consolidation, human-gated** - mine the audit ledger for
+   recurring verified patterns; surface as PROPOSED rules in the admin
+   console for a person to promote. No autonomous self-modification.
+4. **World-state modeling / active experimentation** - parked until a
+   customer use case requires state tracking; recorded so it is not lost.
+
+Definition we build toward (and the only "intelligence" claim we make):
+*verified adaptive model-building* - how efficiently the system constructs
+an accurate model of something unfamiliar, detects when it is wrong, and
+improves, with every update authorized, attributable and auditable.
+
 ## Claims discipline
 
 Say: *"permission-first retrieval, two-layer redaction, tamper-evident audit,
