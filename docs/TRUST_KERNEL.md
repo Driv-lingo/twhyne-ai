@@ -119,12 +119,29 @@ Ordered, each gated on the layer before it:
    refusals) before ever making it a hard bottleneck. Facts enter state only
    via verified extraction with human promotion; the ledger remains the
    untouched substrate.
-5. **Learned latent world models / open-world experimentation** - not ours
-   to build; that is frontier-lab work on frontier-lab compute. The
-   replaceable-node architecture absorbs such models when they ship as
-   runnable artifacts, the same way Qwen replaced CodeLlama. Robotics and
-   sensor-fusion examples remain a different product; pursuing them now is
-   mission creep.
+5. **Predictive / dynamics nodes** (corrected scope: by evidence, not
+   category). Twhyne does not train general world models - but domain-scoped
+   learned predictors are small-model, single-GPU work (pretrained JEPA
+   encoders are public; Dreamer-class latent dynamics train on one GPU), and
+   they answer the questions RAG is structurally mute on: what is happening,
+   what will happen, what changed (staffing forecasts, risk trends, supply
+   depletion, equipment anomalies). A DynamicsNode is a node type with
+   contract `state-in -> predicted-state-out (+confidence, +horizon)`:
+   - registered/imported like any node, under the same ACLs;
+   - EvaluationRecords (prediction_error subtype) close its learning loop
+     when observations arrive - the Gen-3 substrate IS its feedback system;
+   - conditional reliability profiles calibrate trust from MEASURED
+     prediction error, never self-reported confidence;
+   - the governed state registry grounds it: learned model proposes,
+     symbolic state verifies;
+   - outputs ship labeled PREDICTED (new trust label) with horizon and
+     confidence, never as fact; no actuation until the tool/action policy
+     engine exists; training data enters under the permission graph.
+   The true obstacle is data access (customer time-series, connectors,
+   data-governance agreements), not architecture or compute - which is why
+   this sequences after the first customer, whose real data makes it real.
+   Frontier-scale generalist world models remain out of scope; when labs
+   ship them as runnable artifacts, the node registry absorbs them.
 
 Gen 3 is not AGI. It is a system that gets empirically better at using its
 own components from verified experience, while preserving evidence,
