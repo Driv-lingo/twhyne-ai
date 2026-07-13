@@ -104,10 +104,27 @@ Ordered, each gated on the layer before it:
    human approval -> active rule, with origin, evidence, approver, version,
    and rollback. The learning process is itself governed - arguably Twhyne's
    most distinctive idea.
-4. **World-state modeling / active experimentation** - parked until a
-   customer use case requires state tracking; recorded so it is not lost.
-   Robotics/sensor-fusion/open-world examples are a different product;
-   pursuing them now is mission creep.
+4. **Governed state registry** (the world-model idea, Twhyne-sized). The
+   research problem with world models is getting state that is learned AND
+   grounded; symbolic state is "brittle" - but a governed corpus is closed,
+   small, and observable, where brittleness is called correctness. Build an
+   explicit, queryable state extracted from verified sources with
+   provenance: entities (policies, sources, roles), facts with effective
+   dates, supersession/conflict edges. Enforced at the answer choke point
+   like every other gate, so the model cannot skip it ("policy consults the
+   state" by architecture, not training). Payoff: "model asserted X, state
+   says not-X" becomes a checkable inconsistency - hallucination as a
+   detectable failure class - plus queryable supersession and temporal
+   answers. Stage it as a VERIFIER (flag inconsistencies, strengthen
+   refusals) before ever making it a hard bottleneck. Facts enter state only
+   via verified extraction with human promotion; the ledger remains the
+   untouched substrate.
+5. **Learned latent world models / open-world experimentation** - not ours
+   to build; that is frontier-lab work on frontier-lab compute. The
+   replaceable-node architecture absorbs such models when they ship as
+   runnable artifacts, the same way Qwen replaced CodeLlama. Robotics and
+   sensor-fusion examples remain a different product; pursuing them now is
+   mission creep.
 
 Gen 3 is not AGI. It is a system that gets empirically better at using its
 own components from verified experience, while preserving evidence,
