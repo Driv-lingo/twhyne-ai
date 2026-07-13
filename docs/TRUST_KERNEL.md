@@ -55,35 +55,63 @@ identity/role → authorized source set → retrieve only allowed docs/chunks
    today; all coordination is inside one process. This is the long-horizon
    architecture, not a near-term claim.
 
-## Cognitive roadmap (post-signed-identity)
+## Governed adaptation (Gen 3, post-signed-identity)
 
-Twhyne already runs a cognitive loop offline: the adversarial benchmark ->
-failure autopsy -> fix -> rerun cycle is observe/predict/verify/learn with a
-human as the consolidation step, and the audit ledger is persistent episodic
-memory (every question, verdict, evidence hash, outcome). The cognitive work
-is moving that loop toward runtime WITHOUT letting learning escape the
-security boundaries - learned behavior can never override a permission, and
-nothing consolidates into knowledge without verification.
+The thesis. The industry's false tradeoff is *static + controllable* OR
+*adaptive + unpredictable*. Twhyne's bet is the fifth option: **adaptive +
+evidence-constrained + permission-constrained + auditable + reversible.**
+That single principle serves both halves of the product - it is the
+intelligence story and the trust story at once.
+
+Precise diagnosis (not "Twhyne has no cognition"): Twhyne's runtime
+reasoning and verification loops are the system's own; its **cross-episode
+learning is currently human-mediated** - the benchmark -> autopsy -> fix ->
+rerun cycle carries improvement across episodes, and the human is the
+learning mechanism. The Gen-3 objective is exact: *move selected
+cross-episode learning from the developer into the system without
+transferring authority to the system.*
+
+Invariants (hold for every item below):
+- **Only verified outcomes update anything.** A verified outcome is a
+  production result confirmed by an independent deterministic verifier, or
+  an authenticated human review with a reproduced failure - not raw user
+  interaction. Poisoning-resistant without going blind to the real
+  environment.
+- **The ledger is the substrate, not the memory.** Never mutate it.
+  Immutable ledger -> episodic index -> consolidation -> proposed knowledge;
+  raw evidence stays pristine.
+- **Learning cannot override a permission.** Adaptations are attributable,
+  tested, authorized, versioned, and reversible - the change process itself
+  is governed, not just the model's outputs.
 
 Ordered, each gated on the layer before it:
 
-1. **Prediction records** - executed answers carry predicted vs observed
-   outcome and prediction_error in the gates (the code node already does
-   this implicitly; make it explicit and auditable).
-2. **Node reliability profiles** - benchmark history mined into per-node,
-   per-category accuracy/latency profiles consulted by the router. The
-   learning signal is verified benchmark evidence only, never raw user
-   interaction - poisoning-resistant by construction.
-3. **Episodic consolidation, human-gated** - mine the audit ledger for
-   recurring verified patterns; surface as PROPOSED rules in the admin
-   console for a person to promote. No autonomous self-modification.
+1. **EvaluationRecord** - a general outcome object
+   `{claim, expected, observed, verifier, verdict, confidence, error_type,
+   evidence}`; prediction-error is one subtype. Attached only where a
+   falsifiable expectation exists (code execution, routing), not forced
+   onto every answer.
+2. **Conditional node reliability profiles** (the first genuinely adaptive
+   capability). NOT global accuracy. The unit is
+   `NodeCapabilityProfile{node, task_family, conditions, verified_accuracy,
+   abstention_rate, false_confidence_rate, latency, evidence}`. Routing
+   becomes: task requirements + authorization + conditional reliability +
+   cost -> route. The router forms an empirical self-model of its own
+   components - a real self-model, no mysticism.
+3. **Human-gated consolidation** - ledger -> pattern miner (recurring
+   failure / route / evidence conflict / abstention) -> proposed rule ->
+   validation (benchmark simulation + regression + confidence threshold) ->
+   human approval -> active rule, with origin, evidence, approver, version,
+   and rollback. The learning process is itself governed - arguably Twhyne's
+   most distinctive idea.
 4. **World-state modeling / active experimentation** - parked until a
    customer use case requires state tracking; recorded so it is not lost.
+   Robotics/sensor-fusion/open-world examples are a different product;
+   pursuing them now is mission creep.
 
-Definition we build toward (and the only "intelligence" claim we make):
-*verified adaptive model-building* - how efficiently the system constructs
-an accurate model of something unfamiliar, detects when it is wrong, and
-improves, with every update authorized, attributable and auditable.
+Gen 3 is not AGI. It is a system that gets empirically better at using its
+own components from verified experience, while preserving evidence,
+authorization, human control, and a complete history of why it changed.
 
 ## Claims discipline
 
@@ -91,3 +119,10 @@ Say: *"permission-first retrieval, two-layer redaction, tamper-evident audit,
 demonstrated on a published adversarial benchmark."*
 Do **not** say: *"cannot leak," "incorruptible," or "enterprise-secure"* until
 signed identity, signed audit, and an external review exist.
+
+On differentiation, do **not** claim *"no cloud provider can match this"* -
+it is absolute and probably false (a provider could architect the same
+properties). The defensible claim is the design principle: **Twhyne treats
+authority, evidence, and learning as governed system properties rather than
+capabilities entrusted to a foundation model.** The question is whether
+Twhyne does this foundationally - not whether others could.
