@@ -147,6 +147,19 @@ Gen 3 is not AGI. It is a system that gets empirically better at using its
 own components from verified experience, while preserving evidence,
 authorization, human control, and a complete history of why it changed.
 
+**The working definition of general intelligence we build toward**
+(environment-relative, per Chollet/Legg-Hutter): not knowing the world, but
+being placed in an unfamiliar environment and building verified competence
+in it - efficiently, and with transfer. A deployment IS an environment; the
+state registry models it, nodes are its senses and effectors, governed
+adaptation is how competence accrues. The metric is
+**time-to-verified-competence per new environment**: episodes until the
+benchmark passes in a domain the unmodified kernel has never seen. If
+transfer is real, that number falls with each new vertical - which makes
+every new customer domain literally an instance of the experiment. Transfer
+under local-first: STRUCTURE travels between deployments (consolidated
+rules, reliability priors, task-family schemas); DATA never does.
+
 ## Claims discipline
 
 Say: *"permission-first retrieval, two-layer redaction, tamper-evident audit,
