@@ -55,7 +55,7 @@ export function TrustStrip({ node, gates, sources, evidence }) {
     <div className="trust-wrap">
       <div className="trust-strip" role="group" aria-label="How this answer was produced">
         {label && (
-          <span className={`trust-chip ${label.cls}`} title="How this answer was earned">
+          <span className={`trust-chip ${label.cls}`} title="How this answer was produced">
             {label.text}
           </span>
         )}
