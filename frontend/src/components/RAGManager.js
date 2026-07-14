@@ -185,7 +185,12 @@ const RAGManager = ({ onNodeCreated }) => {
       }
     } catch (error) {
       console.error('Error deleting dataset:', error);
-      alert('Failed to delete dataset');
+      // Say WHY: "backend unreachable" and "dataset not found" need
+      // opposite user actions (restart the app vs refresh the list).
+      const why = error.response
+        ? (error.response.data?.error || `server error ${error.response.status}`)
+        : 'backend unreachable — is Twhyne still running? Restart the launcher and try again';
+      alert('Could not delete the knowledge base: ' + why);
     }
   };
 
