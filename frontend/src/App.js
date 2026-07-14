@@ -227,6 +227,46 @@ function App() {
     return () => clearInterval(iv);
   }, [isLoading]);
 
+  // Governed timers (layer 9 v0.1). Timers fire at READ time: the backend
+  // computes their state from the clock only when the list is observed.
+  // This poll is the user's client observing on their behalf — the system
+  // itself never acts between reads.
+  const [timers, setTimers] = useState([]);
+  const seenElapsedRef = useRef(new Set());
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const r = await axios.get('http://127.0.0.1:5002/api/timers');
+        if (!alive) return;
+        const list = (r.data && r.data.timers) || [];
+        setTimers(list);
+        list.forEach(t => {
+          if (t.status === 'elapsed' && !seenElapsedRef.current.has(t.id)) {
+            seenElapsedRef.current.add(t.id);
+            setHistory(h => [...h, {
+              role: 'system',
+              content: `⏱ Timer elapsed: ${t.label || t.id} (observed just now — read-time firing)`
+            }]);
+          }
+        });
+      } catch (e) { /* backend down; try again next tick */ }
+    };
+    poll();
+    const iv = setInterval(poll, 5000);
+    // 1s re-render so pending countdowns tick smoothly between polls
+    // (display only — the authoritative state transition happens server-side
+    // at read time).
+    const tick = setInterval(() => setTimers(ts => ts.length ? [...ts] : ts), 1000);
+    return () => { alive = false; clearInterval(iv); clearInterval(tick); };
+  }, []);
+  const dismissTimer = async (id) => {
+    try { await axios.delete(`http://127.0.0.1:5002/api/timers/${id}`); } catch (e) {}
+    setTimers(ts => ts.map(t => t.id === id ? { ...t, status: 'cancelled' } : t));
+  };
+  const visibleTimers = timers.filter(
+    t => t.status === 'pending' || t.status === 'elapsed');
+
   // Scroll to bottom of chat
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -826,6 +866,27 @@ function App() {
         {/* Left panel with conversation */}
         <div className="left-panel">
           <div className="interaction-panel">
+            {visibleTimers.length > 0 && (
+              <div className="timer-strip" role="status" aria-label="Timers">
+                {visibleTimers.map(t => {
+                  const rem = Math.max(0, Math.round(t.due_at * 1000 - Date.now()) / 1000);
+                  const mm = Math.floor(rem / 60), ss = Math.floor(rem % 60);
+                  return (
+                    <span key={t.id}
+                          className={`timer-chip ${t.status}`}
+                          title={t.status === 'pending'
+                            ? 'Fires at read time: state is computed from the clock when checked'
+                            : 'Elapsed (observed at last check)'}>
+                      {t.status === 'pending'
+                        ? `⏱ ${t.label || 'timer'} — ${mm}:${String(ss).padStart(2, '0')}`
+                        : `⏱ ${t.label || 'timer'} — ELAPSED`}
+                      <button className="timer-dismiss" aria-label="Dismiss timer"
+                              onClick={() => dismissTimer(t.id)}>×</button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             {/* Chat history */}
             <div className="chat-history">
               <h3>

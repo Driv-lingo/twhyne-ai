@@ -99,14 +99,27 @@ def verify_token(token: str):
 def resolve_role(request, body: dict):
     """Determine the authorized role for a request.
 
+    Returns (role, signed: bool, error: str|None). See resolve_identity for
+    the precedence rules; this keeps the original 3-tuple contract.
+    """
+    subject, role, signed, err = resolve_identity(request, body)
+    return role, signed, err
+
+
+def resolve_identity(request, body: dict):
+    """Determine the authorized identity for a request.
+
     Precedence:
       1. A valid signed token (Authorization: Bearer <t> or body 'token').
-         Its role is authoritative and cannot be overridden by the body.
-      2. No token -> 'public' (least access). A body-asserted role is
-         honored ONLY when signed identity is not required AND no token was
-         supplied, preserving the existing local/dev workflow.
+         Its role AND subject are authoritative and cannot be overridden by
+         the body.
+      2. No token -> 'public' (least access), subject None. A body-asserted
+         role is honored ONLY when signed identity is not required AND no
+         token was supplied, preserving the existing local/dev workflow —
+         and never yields a subject, so per-person resources (e.g. timers)
+         cannot be claimed by asserting a role.
 
-    Returns (role, signed: bool, error: str|None).
+    Returns (subject: str|None, role, signed: bool, error: str|None).
     """
     require = os.environ.get("TWHYNE_REQUIRE_SIGNED_IDENTITY", "").strip().lower() \
         in ("1", "true", "yes")
@@ -124,17 +137,19 @@ def resolve_role(request, body: dict):
     if token:
         payload = verify_token(token)
         if payload:
-            return payload["role"], True, None
+            return (str(payload.get("sub") or "") or None,
+                    payload["role"], True, None)
         if require:
-            return "public", False, "invalid or expired identity token"
+            return None, "public", False, "invalid or expired identity token"
         # Invalid token but signed identity not required: fail safe to public.
-        return "public", False, None
+        return None, "public", False, None
 
     # No token.
     body_role = str(body.get("role", "") or "").strip().lower()
     if require and body_role and body_role != "public":
-        return "public", False, ("signed identity required: role must be "
-                                  "presented as a signed token, not asserted")
+        return None, "public", False, ("signed identity required: role must "
+                                       "be presented as a signed token, not "
+                                       "asserted")
     if body_role:
-        return (body_role if body_role in _ROLES else "public"), False, None
-    return "public", False, None
+        return None, (body_role if body_role in _ROLES else "public"), False, None
+    return None, "public", False, None

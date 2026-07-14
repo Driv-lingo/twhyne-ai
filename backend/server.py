@@ -662,6 +662,19 @@ def _timers_save(timers):
         logger.error(f"timers save failed: {e}")
 
 
+_LABEL_SAFE_RE = __import__('re').compile(r'[^A-Za-z0-9 .,:\-]')
+
+
+def _safe_label(label):
+    """Labels are echoed into chat, and chat re-enters LLM prompts via
+    conversation history — so a label is an INJECTION SURFACE, not just a
+    string. Strict charset, collapsed whitespace, hard cap. Never store a
+    raw prompt as a label.
+    """
+    s = _LABEL_SAFE_RE.sub(' ', str(label or ''))
+    return ' '.join(s.split())[:60]
+
+
 def _timer_audit(action, timer, role):
     _audit_append({
         'role': role,
@@ -675,8 +688,12 @@ def _timer_audit(action, timer, role):
     })
 
 
-def _timer_create(role, seconds, label=''):
+def _timer_create(role, seconds, label='', subject=None):
     """Create a timer under the `timer.notify` action policy.
+
+    `subject` is the SIGNED identity subject (None when unsigned). Timers
+    belong to a subject when one exists; unsigned timers belong to the
+    shared role bucket and are second-class by design.
 
     Returns (timer, None) or (None, (http_status, message)). Every denial
     reason is stated - the caller can show it verbatim.
@@ -701,14 +718,16 @@ def _timer_create(role, seconds, label=''):
     with _TIMERS_LOCK:
         timers = _timers_load()
         pending = [t for t in timers
-                   if t.get('role') == role and t.get('status') == 'pending']
+                   if _timer_owned(t, role, subject)
+                   and t.get('status') == 'pending']
         cap = int(policy.get('max_pending_per_role', 5))
         if len(pending) >= cap:
             return None, (429, f"Pending-timer cap reached for role "
                                f"'{role}' ({cap}).")
         now = time.time()
         timer = {'id': _uuid.uuid4().hex[:12], 'role': role,
-                 'label': str(label or '')[:120],
+                 'subject': subject,
+                 'label': _safe_label(label),
                  'created_at': now, 'due_at': now + seconds,
                  'duration_seconds': seconds,
                  'status': 'pending', 'fired_at': None}
@@ -718,11 +737,23 @@ def _timer_create(role, seconds, label=''):
     return timer, None
 
 
-def _timers_observe(role=None):
+def _timer_owned(t, role, subject):
+    """Ownership check. Timers are PERSON-scoped when a signed subject
+    exists; a body-asserted role can neither see nor cancel them (claiming
+    a role must never claim a person's resources). Unsigned timers live in
+    a shared per-role bucket visible only to other unsigned callers of
+    that role - the honest semantics of an unauthenticated dev install.
+    """
+    if t.get('subject'):
+        return subject is not None and t.get('subject') == subject
+    return subject is None and t.get('role') == role
+
+
+def _timers_observe(role=None, subject=None):
     """Read-time firing: recompute each timer's state from the clock NOW,
     because someone is looking. First observation past due_at transitions
     pending -> elapsed and audits the event; nothing happens between reads.
-    Returns the (filtered) timer list, newest first.
+    Returns the caller's own timers, newest first.
     """
     fired = []
     with _TIMERS_LOCK:
@@ -737,7 +768,7 @@ def _timers_observe(role=None):
             _timers_save(timers)
     for t in fired:
         _timer_audit('timer-elapsed', t, t.get('role'))
-    out = [t for t in timers if role is None or t.get('role') == role]
+    out = [t for t in timers if _timer_owned(t, role, subject)]
     return sorted(out, key=lambda t: t.get('created_at') or 0, reverse=True)
 
 
@@ -1457,12 +1488,12 @@ def create_app():
             if re.search(r"\b(check|list|show|status of|how long)\b.{0,30}"
                          r"\b(timer|timers|reminder|reminders|countdown)\b",
                          prompt or '', re.I):
-                from identity import resolve_role as _rr
-                _role, _sig, _iderr = _rr(request, data)
+                from identity import resolve_identity as _ri
+                _subj, _role, _sig, _iderr = _ri(request, data)
                 if _iderr:
                     return jsonify({'error': _iderr,
                                     'identity_required': True}), 401
-                tl = _timers_observe(_role)
+                tl = _timers_observe(_role, _subj)
                 if not tl:
                     text = "You have no timers."
                 else:
@@ -1503,14 +1534,19 @@ def create_app():
                                               'parseable duration'}})
                 mult = {'h': 3600, 'm': 60, 's': 1}[m.group(2)[0].lower()]
                 secs = float(m.group(1)) * mult
-                # An ACTION uses the authoritative role: signed identity when
-                # required, never a bare body assertion the token contradicts.
-                from identity import resolve_role as _rr
-                _role, _sig, _iderr = _rr(request, data)
+                # An ACTION uses the authoritative identity: signed subject +
+                # role, never a bare body assertion the token contradicts.
+                from identity import resolve_identity as _ri
+                _subj, _role, _sig, _iderr = _ri(request, data)
                 if _iderr:
                     return jsonify({'error': _iderr,
                                     'identity_required': True}), 401
-                timer, err = _timer_create(_role, secs, label=prompt[:120])
+                # DERIVED label, never the raw prompt: labels are echoed back
+                # into chat and chat re-enters LLM prompts via history, so a
+                # raw prompt stored here is a stored-injection channel.
+                _lbl = f"{m.group(1)} {m.group(2).lower()} timer"
+                timer, err = _timer_create(_role, secs, label=_lbl,
+                                           subject=_subj)
                 if err:
                     _status, msg = err
                     text = f"Timer refused by the action policy: {msg}"
@@ -2133,19 +2169,20 @@ def create_app():
     # ---- Timers: the layer-9 v0.1 surface ----------------------------
     @app.route('/api/timers', methods=['GET', 'POST'])
     def timers_collection():
-        from identity import resolve_role
+        from identity import resolve_identity
         body = request.get_json(silent=True) or {}
-        role, _signed, id_err = resolve_role(request, body)
+        subject, role, _signed, id_err = resolve_identity(request, body)
         if id_err:
             return jsonify({'error': id_err, 'identity_required': True}), 401
         if request.method == 'GET':
             # Observation IS the trigger: listing recomputes state from the
             # clock and fires anything past due. The system never acts alone.
-            return jsonify({'timers': _timers_observe(role),
+            return jsonify({'timers': _timers_observe(role, subject),
                             'server_time': time.time()}), 200
         timer, err = _timer_create(role,
                                    body.get('duration_seconds'),
-                                   body.get('label', ''))
+                                   body.get('label', ''),
+                                   subject=subject)
         if err:
             status, msg = err
             return jsonify({'error': msg}), status
@@ -2157,9 +2194,9 @@ def create_app():
 
     @app.route('/api/timers/<tid>', methods=['DELETE'])
     def timers_delete(tid):
-        from identity import resolve_role
+        from identity import resolve_identity
         body = request.get_json(silent=True) or {}
-        role, _signed, id_err = resolve_role(request, body)
+        subject, role, signed, id_err = resolve_identity(request, body)
         if id_err:
             return jsonify({'error': id_err, 'identity_required': True}), 401
         with _TIMERS_LOCK:
@@ -2167,7 +2204,10 @@ def create_app():
             match = next((t for t in timers if t.get('id') == tid), None)
             if not match:
                 return jsonify({'error': 'Timer not found'}), 404
-            if match.get('role') != role and role != 'admin':
+            # Owner may cancel; admin override only with a SIGNED admin
+            # token - a body-asserted 'admin' cancels nothing.
+            if not (_timer_owned(match, role, subject)
+                    or (signed and role == 'admin')):
                 return jsonify({'error': 'Not your timer'}), 403
             match['status'] = 'cancelled'
             _timers_save(timers)
