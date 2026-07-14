@@ -1321,15 +1321,20 @@ def create_app():
                                        f'PDF and plain-text formats (txt, md, '
                                        f'csv, json, code), plus images.'})
         try:
+            _set_progress('indexing', f'reading {file.filename}')
             ds = get_rag_manager().create_dataset(
                 file.filename, 'Chat attachment', [{
                     'filename': file.filename, 'type': 'text',
-                    'content': text, 'encoding': 'utf-8'}])
+                    'content': text, 'encoding': 'utf-8'}],
+                progress=lambda d, t: _set_progress(
+                    'indexing', f'{file.filename} — section {d}/{t}'))
         except Exception as e:
             logger.error(f"Attachment ingest failed: {e}")
             return jsonify({'error': 'The file was read but could not be '
                                      'indexed. Try the Knowledge Bases '
                                      'panel.'}), 500
+        finally:
+            _set_progress('idle')
         return jsonify({'filepath': filepath, 'kind': 'document',
                         'dataset_id': ds.get('id'),
                         'chunks': ds.get('document_count'),
@@ -2544,7 +2549,15 @@ def create_app():
             files = data.get('files', [])
             if not name or not files:
                 return jsonify({'error': 'Name and files are required'}), 400
-            return jsonify({'success': True, 'dataset': get_rag_manager().create_dataset(name, data.get('description', ''), files)})
+            _set_progress('indexing', f'preparing "{name}"')
+            try:
+                ds = get_rag_manager().create_dataset(
+                    name, data.get('description', ''), files,
+                    progress=lambda d, t: _set_progress(
+                        'indexing', f'"{name}" — section {d}/{t}'))
+            finally:
+                _set_progress('idle')
+            return jsonify({'success': True, 'dataset': ds})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 

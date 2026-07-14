@@ -57,10 +57,16 @@ def _embed(text: str) -> Optional[List[float]]:
     if m is None:
         return None
     try:
-        # ~1300 chars stays safely under the 512-token training window
-        # (PDF text can tokenize near 1 token per 2.5 chars). A truncated
-        # embedding of a long chunk beats a corrupted full-window one.
-        out = m.create_embedding(text[:1300])
+        # SERIALIZED: llama.cpp contexts are not thread-safe, and waitress
+        # serves requests on multiple threads - an ingest embedding chunks
+        # while a query embeds its retrieval probe crashed the process with
+        # a segfault (native code, no traceback, container just dies). Every
+        # create_embedding call goes through this lock.
+        with _embed_lock:
+            # ~1300 chars stays safely under the 512-token training window
+            # (PDF text can tokenize near 1 token per 2.5 chars). A truncated
+            # embedding of a long chunk beats a corrupted full-window one.
+            out = m.create_embedding(text[:1300])
         return out['data'][0]['embedding']
     except Exception as e:
         logger.error(f"Embedding failed: {e}")
@@ -300,9 +306,15 @@ class SemanticRAGManager:
                  "is_available": True, "created_at": info.get("created_at", "")}
                 for did, info in self.datasets.items()]
 
-    def create_dataset(self, name: str, description: str, files: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def create_dataset(self, name: str, description: str, files: List[Dict[str, Any]],
+                       progress=None) -> Dict[str, Any]:
+        """Chunk, embed and index files. `progress(done, total)` is called as
+        embedding advances so long ingests can show live status - embedding
+        is CPU-bound and a large PDF takes real time.
+        """
         dataset_id = f"rag-{uuid.uuid4().hex[:8]}"
-        documents = []
+        # Pass 1: chunk everything first so progress has a real denominator.
+        pending = []  # (filename, chunk_index, text)
         for file_data in files:
             try:
                 content = file_data.get("content", "")
@@ -313,11 +325,21 @@ class SemanticRAGManager:
                 # 220 words (~300 tokens) fits comfortably inside the BGE
                 # 512-token embedding window; 350-word chunks overflowed it.
                 for i, chunk in enumerate(self._chunk_text(content, chunk_size=220)):
-                    documents.append({"id": f"{dataset_id}-doc-{len(documents)}",
-                                      "source": filename, "content": chunk,
-                                      "chunk_index": i, "embedding": _embed(chunk)})
+                    pending.append((filename, i, chunk))
             except Exception as e:
                 logger.error(f"Error processing file: {e}")
+        # Pass 2: embed with progress.
+        documents = []
+        total = len(pending)
+        for n, (filename, i, chunk) in enumerate(pending):
+            documents.append({"id": f"{dataset_id}-doc-{len(documents)}",
+                              "source": filename, "content": chunk,
+                              "chunk_index": i, "embedding": _embed(chunk)})
+            if progress and (n % 3 == 0 or n == total - 1):
+                try:
+                    progress(n + 1, total)
+                except Exception:
+                    pass
         from datetime import datetime as _dt
         self.datasets[dataset_id] = {"name": name, "description": description,
                                      "documents": documents,

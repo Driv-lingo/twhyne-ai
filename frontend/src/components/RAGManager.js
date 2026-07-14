@@ -30,6 +30,7 @@ const RAGManager = ({ onNodeCreated }) => {
   const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [ragStatus, setRagStatus] = useState(null);
+  const [ingestProgress, setIngestProgress] = useState('');
 
   useEffect(() => {
     if (showManager) {
@@ -37,6 +38,21 @@ const RAGManager = ({ onNodeCreated }) => {
       checkRAGStatus();
     }
   }, [showManager]);
+
+  // While an ingest runs, poll the backend's progress line so the user sees
+  // "section 41/230" instead of a frozen button (embedding is CPU-bound and
+  // large documents take minutes).
+  useEffect(() => {
+    if (!isLoading) { setIngestProgress(''); return; }
+    const iv = setInterval(async () => {
+      try {
+        const r = await axios.get('http://localhost:5002/progress');
+        const { state, detail } = r.data || {};
+        if (state === 'indexing') setIngestProgress(detail || 'indexing…');
+      } catch (e) { /* keep last text */ }
+    }, 1200);
+    return () => clearInterval(iv);
+  }, [isLoading]);
 
   const checkRAGStatus = async (retries = 5) => {
     try {
@@ -359,12 +375,18 @@ const RAGManager = ({ onNodeCreated }) => {
                     disabled={isLoading || !datasetName || uploadedFiles.length === 0}
                     className="primary-btn"
                   >
-                    {isLoading ? 'Creating...' : 'Create Knowledge Base'}
+                    {isLoading ? (ingestProgress || 'Creating…') : 'Create Knowledge Base'}
                   </button>
                   <button onClick={resetCreateForm} className="secondary-btn">
                     Cancel
                   </button>
                 </div>
+                {isLoading && (
+                  <p className="hint" style={{marginTop: 8, fontSize: 12, opacity: 0.75}}>
+                    Indexing runs on your CPU — large documents take a few minutes.
+                    Progress updates live above.
+                  </p>
+                )}
               </div>
             </div>
           ) : selectedDataset ? (
