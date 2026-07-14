@@ -109,6 +109,7 @@ docker run --name twhyne-ai ^
   -v "%RAG_DIR%:/app/backend/rag_storage" ^
   -p 3000:3000 ^
   -p 5002:5002 ^
+  -m 12g ^
   %IMAGE%
 
 echo.
