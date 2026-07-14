@@ -627,6 +627,120 @@ def _audit_verify():
     return True, n, None
 
 
+# ---- Layer 9 v0.1: governed timers (`timer.notify`) -------------------
+# The one whitelisted action capability. Design constraints, in order:
+#   * consent at request time - a timer exists only because a caller asked;
+#   * fail-closed - no `timer.notify` policy in permissions => denied;
+#   * bounded - per-role pending cap and max duration from the policy;
+#   * ZERO autonomous action - a timer "fires" at READ TIME: its state is
+#     computed from the clock when the list is observed (the UI polling on
+#     the user's behalf counts as the user asking). No background thread,
+#     no unprompted notification. Deferred state + polling observer.
+#   * audited - creation, first-observed elapse, and cancellation are
+#     hash-chained ledger records like any query.
+
+_TIMERS_PATH = _AUDIT_PATH.parent / 'timers.json'
+_TIMERS_LOCK = __import__('threading').Lock()
+
+
+def _timers_load():
+    import json as _json
+    try:
+        if _TIMERS_PATH.exists():
+            return _json.loads(_TIMERS_PATH.read_text()) or []
+    except Exception as e:
+        logger.error(f"timers load failed: {e}")
+    return []
+
+
+def _timers_save(timers):
+    import json as _json
+    try:
+        _TIMERS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _TIMERS_PATH.write_text(_json.dumps(timers, indent=1))
+    except Exception as e:
+        logger.error(f"timers save failed: {e}")
+
+
+def _timer_audit(action, timer, role):
+    _audit_append({
+        'role': role,
+        'prompt': f"action:{action}:{timer.get('id')}",
+        'node_id': 'action-policy',
+        'verdict': action,
+        'gates': {'action': 'timer.notify', 'event': action,
+                  'timer_id': timer.get('id'),
+                  'label': timer.get('label'),
+                  'due_at': timer.get('due_at')},
+    })
+
+
+def _timer_create(role, seconds, label=''):
+    """Create a timer under the `timer.notify` action policy.
+
+    Returns (timer, None) or (None, (http_status, message)). Every denial
+    reason is stated - the caller can show it verbatim.
+    """
+    policy = get_rag_manager().action_policy('timer.notify')
+    if policy is None:
+        return None, (403, "The 'timer.notify' action is not permitted by "
+                           "this install's action policy.")
+    allowed = policy.get('allowed_roles') or []
+    if '*' not in allowed and role not in allowed:
+        return None, (403, f"Role '{role}' is not authorized for "
+                           f"'timer.notify'.")
+    try:
+        seconds = float(seconds)
+    except Exception:
+        return None, (400, 'duration_seconds must be a number.')
+    max_s = float(policy.get('max_duration_hours', 24)) * 3600
+    if not (0 < seconds <= max_s):
+        return None, (400, f"Duration must be between 1 second and "
+                           f"{policy.get('max_duration_hours', 24)} hours.")
+    import uuid as _uuid
+    with _TIMERS_LOCK:
+        timers = _timers_load()
+        pending = [t for t in timers
+                   if t.get('role') == role and t.get('status') == 'pending']
+        cap = int(policy.get('max_pending_per_role', 5))
+        if len(pending) >= cap:
+            return None, (429, f"Pending-timer cap reached for role "
+                               f"'{role}' ({cap}).")
+        now = time.time()
+        timer = {'id': _uuid.uuid4().hex[:12], 'role': role,
+                 'label': str(label or '')[:120],
+                 'created_at': now, 'due_at': now + seconds,
+                 'duration_seconds': seconds,
+                 'status': 'pending', 'fired_at': None}
+        timers.append(timer)
+        _timers_save(timers)
+    _timer_audit('timer-created', timer, role)
+    return timer, None
+
+
+def _timers_observe(role=None):
+    """Read-time firing: recompute each timer's state from the clock NOW,
+    because someone is looking. First observation past due_at transitions
+    pending -> elapsed and audits the event; nothing happens between reads.
+    Returns the (filtered) timer list, newest first.
+    """
+    fired = []
+    with _TIMERS_LOCK:
+        timers = _timers_load()
+        now = time.time()
+        for t in timers:
+            if t.get('status') == 'pending' and now >= float(t.get('due_at') or 0):
+                t['status'] = 'elapsed'
+                t['fired_at'] = now
+                fired.append(t)
+        if fired:
+            _timers_save(timers)
+    for t in fired:
+        _timer_audit('timer-elapsed', t, t.get('role'))
+    out = [t for t in timers if role is None or t.get('role') == role]
+    return sorted(out, key=lambda t: t.get('created_at') or 0, reverse=True)
+
+
 # ---- Alert escalation: notify a person, not just a log ---------------
 # Local-first means nothing leaves by default; escalation only goes where
 # the operator explicitly points it:
@@ -1331,26 +1445,62 @@ def create_app():
                 return jsonify({'result': text, 'response': text,
                                 'node_id': 'clock', 'sources': [],
                                 'grounded': False, 'role': _role})
-            # Timer / reminder: a request for UNPROMPTED FUTURE ACTION. The
-            # system will not fake this - acting later without being asked in
-            # the moment is exactly what the tool/action policy engine (layer
-            # 9) must govern. State the boundary honestly instead of pretending.
+            # Timer / reminder: handled by the tool/action policy engine
+            # (layer 9 v0.1). A user-requested timer is NOT unprompted action
+            # - consent happens at request time - so it is created under the
+            # whitelisted `timer.notify` capability (role-checked, duration-
+            # and count-bounded, audited) and FIRES AT READ TIME: its state
+            # is computed from the clock whenever the timer list is observed.
+            # The system never notifies or acts on its own between reads.
             if _TIMER_Q_RE.search(prompt or ''):
-                text = ("I can tell you the current time, but I can't yet set "
-                        "timers or reminders - that requires taking an action "
-                        "on my own later, which Twhyne only does under an "
-                        "explicit, permissioned action policy (on the roadmap, "
-                        "not built). Use your device's timer for now. "
-                        "(Current time: "
-                        + __import__('datetime').datetime.now()
-                          .strftime('%H:%M') + ".)")
+                m = re.search(r"(\d+(?:\.\d+)?)\s*(hour|hr|minute|min|second|sec)",
+                              prompt, re.I)
+                if not m:
+                    text = ("I can set a governed timer, but I need a "
+                            "duration - e.g. \"set a timer for 10 minutes\". "
+                            "Note how Twhyne timers work: they fire at read "
+                            "time (when you or the app next checks the timer "
+                            "list), never as an unprompted action.")
+                    return jsonify({'result': text, 'response': text,
+                                    'node_id': 'action-policy', 'sources': [],
+                                    'grounded': False, 'role': _role,
+                                    'gates': {'verdict': 'refused',
+                                              'verdict_reason':
+                                              'timer requested without a '
+                                              'parseable duration'}})
+                mult = {'h': 3600, 'm': 60, 's': 1}[m.group(2)[0].lower()]
+                secs = float(m.group(1)) * mult
+                # An ACTION uses the authoritative role: signed identity when
+                # required, never a bare body assertion the token contradicts.
+                from identity import resolve_role as _rr
+                _role, _sig, _iderr = _rr(request, data)
+                if _iderr:
+                    return jsonify({'error': _iderr,
+                                    'identity_required': True}), 401
+                timer, err = _timer_create(_role, secs, label=prompt[:120])
+                if err:
+                    _status, msg = err
+                    text = f"Timer refused by the action policy: {msg}"
+                    return jsonify({'result': text, 'response': text,
+                                    'node_id': 'action-policy', 'sources': [],
+                                    'grounded': False, 'role': _role,
+                                    'gates': {'verdict': 'refused',
+                                              'verdict_reason': msg}})
+                from datetime import datetime as _dt
+                due = _dt.fromtimestamp(timer['due_at']).strftime('%H:%M:%S')
+                text = (f"Timer set for {m.group(1)} {m.group(2)}(s), due at "
+                        f"{due} (id {timer['id']}). Honest mechanics: this "
+                        f"timer fires at read time - it will show as elapsed "
+                        f"the next time the timer list is checked, and Twhyne "
+                        f"takes no action on its own in between. Creation is "
+                        f"recorded in the audit ledger under the "
+                        f"'timer.notify' action policy.")
                 return jsonify({'result': text, 'response': text,
-                                'node_id': 'clock', 'sources': [],
+                                'node_id': 'action-policy', 'sources': [],
                                 'grounded': False, 'role': _role,
-                                'gates': {'verdict': 'refused',
-                                          'verdict_reason': 'unprompted future '
-                                          'action requires the tool/action '
-                                          'policy engine (not built)'}})
+                                'timer': timer,
+                                'gates': {'verdict': 'answered',
+                                          'action': 'timer.notify'}})
             node_id = data.get('node_id')
             conversation_history = data.get('conversation_history', [])
             if len(conversation_history) > 10:
@@ -1946,6 +2096,50 @@ def create_app():
         role, signed, err = resolve_role(request, body)
         return jsonify({'role': role, 'signed': signed,
                         'error': err}), (401 if err else 200)
+
+    # ---- Timers: the layer-9 v0.1 surface ----------------------------
+    @app.route('/api/timers', methods=['GET', 'POST'])
+    def timers_collection():
+        from identity import resolve_role
+        body = request.get_json(silent=True) or {}
+        role, _signed, id_err = resolve_role(request, body)
+        if id_err:
+            return jsonify({'error': id_err, 'identity_required': True}), 401
+        if request.method == 'GET':
+            # Observation IS the trigger: listing recomputes state from the
+            # clock and fires anything past due. The system never acts alone.
+            return jsonify({'timers': _timers_observe(role),
+                            'server_time': time.time()}), 200
+        timer, err = _timer_create(role,
+                                   body.get('duration_seconds'),
+                                   body.get('label', ''))
+        if err:
+            status, msg = err
+            return jsonify({'error': msg}), status
+        return jsonify({'timer': timer,
+                        'note': 'Timers fire at read time: the state is '
+                                'computed from the clock whenever the list '
+                                'is observed. Twhyne takes no action on its '
+                                'own between reads.'}), 201
+
+    @app.route('/api/timers/<tid>', methods=['DELETE'])
+    def timers_delete(tid):
+        from identity import resolve_role
+        body = request.get_json(silent=True) or {}
+        role, _signed, id_err = resolve_role(request, body)
+        if id_err:
+            return jsonify({'error': id_err, 'identity_required': True}), 401
+        with _TIMERS_LOCK:
+            timers = _timers_load()
+            match = next((t for t in timers if t.get('id') == tid), None)
+            if not match:
+                return jsonify({'error': 'Timer not found'}), 404
+            if match.get('role') != role and role != 'admin':
+                return jsonify({'error': 'Not your timer'}), 403
+            match['status'] = 'cancelled'
+            _timers_save(timers)
+        _timer_audit('timer-cancelled', match, role)
+        return jsonify({'timer': match}), 200
 
     @app.route('/api/admin/day-review', methods=['GET'])
     def admin_day_review():

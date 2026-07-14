@@ -25,7 +25,7 @@ identity/role → authorized source set → retrieve only allowed docs/chunks
 | 6  Output-side secret veto (redaction backstop) | **done** — two-layer |
 | 7  Immutable audit ledger (tamper-evident, hash-chained) | **done** |
 | 8  Signed identity (verify *who* the role belongs to) | **roadmap** |
-| 9  Tool / action policy engine | **roadmap** |
+| 9  Tool / action policy engine | **v0.1** — one whitelisted capability (`timer.notify`), fail-closed |
 | 10 Adversarial governance benchmark (312 tasks) | **done** |
 | 10b Security alerts + human escalation (webhook/email, throttled, opt-in) | **done** |
 | 11 External security review / certification | **roadmap** |
@@ -48,7 +48,14 @@ identity/role → authorized source set → retrieve only allowed docs/chunks
 2. **Cryptographically signed audit records** + append-only/WORM storage, so
    the ledger is tamper-*resistant*, not only tamper-*evident*.
 3. **Tool/action policy engine** — govern not just what is *said* but what is
-   *done* (writes, external calls).
+   *done* (writes, external calls). v0.1 exists with exactly one whitelisted
+   capability, `timer.notify`: user-requested (consent at request time, so
+   not unprompted action), role-scoped, duration- and count-bounded by
+   `permissions.json`, denied by omission for any unlisted action, and
+   audited in the ledger. Timers **fire at read time** — state is computed
+   from the clock when the list is observed, so the system takes zero
+   autonomous action between reads. Anything beyond notify-on-observation
+   (writes, external calls, true push) stays on the roadmap.
 4. **Node protocol / local mesh (Gen 4).** People, documents, tools, models and
    devices become permissioned nodes that exchange *typed, authorized* messages
    through the kernel — never free-form. Nodes do **not** talk to each other

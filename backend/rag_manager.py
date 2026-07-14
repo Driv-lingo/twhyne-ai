@@ -126,6 +126,14 @@ _DEFAULT_PERMISSIONS = {
     "sources": {},
     "restricted_default_roles": ["admin"],
     "default_allowed": True,
+    # ACTION POLICY (layer 9 v0.1): capabilities the system may exercise on a
+    # user's prior request. Only notify-style actions exist; each is
+    # role-scoped and capped. "*" = any role.
+    "actions": {
+        "timer.notify": {"allowed_roles": ["*"],
+                          "max_duration_hours": 24,
+                          "max_pending_per_role": 5}
+    },
 }
 
 
@@ -176,6 +184,11 @@ class SemanticRAGManager:
             except Exception as e:
                 logger.error(f"permissions.json parse error: {e}")
         return dict(_DEFAULT_PERMISSIONS)
+
+    def action_policy(self, action: str) -> Optional[Dict[str, Any]]:
+        """Policy for a named action capability, or None if not permitted at
+        all. Unknown actions are DENIED by omission (fail-closed)."""
+        return (self.permissions.get("actions") or {}).get(action)
 
     def get_permissions(self) -> Dict[str, Any]:
         return self.permissions
