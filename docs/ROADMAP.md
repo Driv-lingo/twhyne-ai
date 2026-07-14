@@ -47,7 +47,29 @@ distributed intelligence) earns credibility only through this milestone.
 
 ## Also tracked
 
-- Improve PDF parsing (layout, tables, scanned docs, chunk provenance).
+### CPU inference performance (deferred 2026-07-14, deliberate)
+Quantization (Q4 GGUF), the AVX2 llama.cpp build, and history truncation are
+done - the one-time bandwidth multipliers are spent. Remaining levers, in
+value order:
+- **Speculative decoding** (the only 2x-class lever left on CPU): 0.5-1B
+  draft model verified by the primary in one pass; output is exact. Blocked
+  on llama-cpp-python not exposing draft models - needs a spike driving the
+  llama.cpp server binary instead of the bindings.
+- **Thread + memory tuning** (~10-20%, cheap): n_threads pinned to PHYSICAL
+  cores (hyperthreads hurt bandwidth-bound work), optional mlock so weights
+  never page out mid-generation. Env-var gated; benchmark before/after.
+- **XMP/EXPO note in setup docs**: desktop DDR4/DDR5 at JEDEC base speed can
+  halve token rate; a BIOS toggle, not code.
+- Not applicable, decided: vLLM/PagedAttention (multi-user GPU serving; we
+  are one user, one box, CPU), huge-pages/TLB work (llama.cpp already mmaps;
+  low single digits).
+
+### Ingest
+- **OCR fallback for scanned/image-only PDFs** (Tesseract in-container,
+  triggers only when no text layer, chunks flagged ocr:true, citations
+  carry a "scanned document - verify against original" caveat). Highest-value
+  ingest improvement; not blocking pilot.
+- Improve PDF parsing (layout, tables, chunk provenance).
 - Streaming tokens (progress states shipped; token streaming later).
 - Reasoning-distill node (R1-class) via the model registry.
 - Decide Planner honestly; mark Vision experimental until it has evals.
