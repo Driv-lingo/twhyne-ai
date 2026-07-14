@@ -321,7 +321,28 @@ class SemanticRAGManager:
                 filename = file_data.get("filename", "unknown")
                 if file_data.get("encoding") == "base64":
                     import base64
-                    content = base64.b64decode(content).decode('utf-8', errors='ignore')
+                    raw = base64.b64decode(content)
+                    # A PDF is BINARY: decoding its bytes as utf-8 produced
+                    # garbage chunks that embedded to noise and retrieved
+                    # nothing - the knowledge base looked created but was
+                    # unusable. Extract real text instead.
+                    if filename.lower().endswith('.pdf') or raw[:5] == b'%PDF-':
+                        try:
+                            import io
+                            from pypdf import PdfReader
+                            content = '\n'.join(
+                                (pg.extract_text() or '')
+                                for pg in PdfReader(io.BytesIO(raw)).pages).strip()
+                        except Exception as e:
+                            logger.error(f"PDF text extraction failed for "
+                                         f"{filename}: {e}")
+                            content = ""
+                        if not content:
+                            logger.error(f"No extractable text in {filename} "
+                                         f"(scanned/image-only PDF?)")
+                            continue
+                    else:
+                        content = raw.decode('utf-8', errors='ignore')
                 # 220 words (~300 tokens) fits comfortably inside the BGE
                 # 512-token embedding window; 350-word chunks overflowed it.
                 for i, chunk in enumerate(self._chunk_text(content, chunk_size=220)):
@@ -405,6 +426,31 @@ class SemanticRAGManager:
         M = M / norms[:, None]
         self._matrix_cache[dataset_id] = (M, embdocs)
         return M, embdocs
+
+    def overview_chunks(self, dataset_id: Optional[str] = None,
+                        role: str = "public", max_chunks: int = 10):
+        """First authorized chunks of a dataset in document order.
+
+        Summarize/overview questions are structurally unanswerable by
+        retrieval - "summarize the key points" resembles no chunk, so
+        semantic search returns nothing and the system refuses despite
+        having the whole document. The overview context is the document
+        itself, in order, behind the same permission boundary as search.
+        Returns (dataset_name, chunks) or (None, []).
+        """
+        ids = [dataset_id] if dataset_id and dataset_id in self.datasets \
+            else sorted(self.datasets,
+                        key=lambda k: str(self.datasets[k].get('created_at') or ''),
+                        reverse=True)
+        for did in ids:
+            docs = self.datasets[did].get("documents", [])
+            allowed = [d for d in sorted(
+                docs, key=lambda d: (d.get('source') or '',
+                                     d.get('chunk_index') or 0))
+                if self._doc_allowed(d, role)]
+            if allowed:
+                return self.datasets[did].get('name') or did, allowed[:max_chunks]
+        return None, []
 
     def search_dataset(self, dataset_id: str, query: str, top_k: int = 4,
                        role: str = "public") -> List[Dict[str, Any]]:

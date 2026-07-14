@@ -152,7 +152,12 @@ const RAGManager = ({ onNodeCreated }) => {
       });
 
       if (response.data.success) {
-        alert(`Dataset "${datasetName}" created successfully!`);
+        const n = response.data.dataset && response.data.dataset.document_count;
+        if (!n) {
+          alert(`"${datasetName}" was created but NO text could be extracted from the file(s) — answers cannot cite it. Scanned/image-only PDFs are not supported yet; try a text-based PDF or a txt/md/csv file.`);
+        } else {
+          alert(`Knowledge base "${datasetName}" created — ${n} sections indexed and citable.`);
+        }
         loadDatasets();
         resetCreateForm();
         

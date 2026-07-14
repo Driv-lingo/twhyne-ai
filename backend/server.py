@@ -1514,6 +1514,10 @@ def create_app():
     _TIMER_Q_RE = re.compile(
         r"\b(set|start|run|create)\s+(a\s+)?(timer|alarm|reminder|countdown)\b|"
         r"\bremind me\b|\bwake me\b|\bin \d+\s*(min|minute|hour|second|sec)", re.I)
+    _SUMMARIZE_RE = re.compile(
+        r"\b(summari[sz]e|key points|main points|overview of|tl;?dr|"
+        r"what (is|are) (this|the) (doc|document|pdf|file)s? about|"
+        r"gist of)\b", re.I)
 
     @app.route('/query', methods=['POST', 'OPTIONS'])
     def submit_query():
@@ -1802,12 +1806,41 @@ def create_app():
             thr = GROUND_THRESHOLD if forced else GROUND_THRESHOLD_AUTO
             should_ground = forced or (bool(context) and top_score >= thr)
 
+            # SUMMARIZE / OVERVIEW: structurally unanswerable by retrieval -
+            # "summarize the key points" resembles no chunk, so search comes
+            # back empty and the system refuses while holding the whole
+            # document. The right context for an overview question is the
+            # document itself, in order, under the same permission boundary.
+            overview_mode = False
+            if (_SUMMARIZE_RE.search(prompt or '')
+                    and (not should_ground or top_score < thr)):
+                ds_name, ov = get_rag_manager().overview_chunks(
+                    dataset_id, role, max_chunks=10)
+                if ov:
+                    overview_mode = True
+                    kept = [{'source': d.get('source'),
+                             'content': d.get('content'),
+                             'chunk_index': d.get('chunk_index'),
+                             'score': 1.0} for d in ov]
+                    context, sources = "", []
+                    for r in kept:
+                        piece = f"[Source: {r['source']}]\n{r['content']}\n\n"
+                        if len(context) + len(piece) > MAX_CONTEXT_CHARS:
+                            break
+                        context += piece
+                        if r['source'] not in sources:
+                            sources.append(r['source'])
+                    top_score = 1.0
+                    should_ground = True
+                    logger.info(f"Overview mode: summarizing '{ds_name}' "
+                                f"({len(kept)} chunks in document order)")
+
             # Lexical veto for AUTO-grounding: BGE's cosine floor on some
             # corpora sits above the threshold ("reverse a binary tree"
             # scored 0.657 against a Taco Bell 10-K). A genuinely relevant
             # chunk shares at least one meaningful word with the question;
             # a pure embedding-floor artifact shares none.
-            if should_ground and not forced and kept:
+            if should_ground and not forced and not overview_mode and kept:
                 pwords = {w for w in re.findall(r'[a-z0-9]+', prompt.lower())
                           if len(w) > 3 and w not in _STOP_LITE}
                 top_text = kept[0].get('content', '').lower()
