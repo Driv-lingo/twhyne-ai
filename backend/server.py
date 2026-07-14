@@ -1499,8 +1499,19 @@ def create_app():
             # kernel exists to prevent. Checking timers IS the firing
             # mechanism (read-time): observing recomputes state from the
             # clock.
-            if (re.search(r"\b(timer|timers|reminder|reminders|countdown|"
-                          r"alarm)\b", prompt or '', re.I)
+            # SCOPE GUARD: none of this applies when the user is TALKING
+            # ABOUT timers rather than USING them - "write a countdown timer
+            # in Python" is a code request and must reach the code node. An
+            # explicit node selection or code/build vocabulary wins.
+            _timer_scope = (
+                not data.get('node_id')
+                and not re.search(
+                    r"\b(write|implement|build|make|code|coding|function|"
+                    r"program|script|python|javascript|java|class|app|"
+                    r"component|explain|example)\b", prompt or '', re.I))
+            if (_timer_scope
+                    and re.search(r"\b(timer|timers|reminder|reminders|"
+                                  r"countdown|alarm)\b", prompt or '', re.I)
                     and not _TIMER_Q_RE.search(prompt or '')):
                 from identity import resolve_identity as _ri
                 _subj, _role, _sig, _iderr = _ri(request, data)
@@ -1543,7 +1554,7 @@ def create_app():
                                 'timers': tl,
                                 'gates': {'verdict': 'answered',
                                           'action': 'timer.notify'}})
-            if _TIMER_Q_RE.search(prompt or ''):
+            if _timer_scope and _TIMER_Q_RE.search(prompt or ''):
                 m = re.search(r"(\d+(?:\.\d+)?)\s*(hour|hr|minute|min|second|sec)",
                               prompt, re.I)
                 if not m:
