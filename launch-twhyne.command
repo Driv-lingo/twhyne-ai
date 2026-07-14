@@ -30,15 +30,38 @@ fi
 printf '%s\n' "$SNF_LICENSE_KEY" > "$LICENSE_FILE"
 
 # -- Start Docker automatically if it isn't running -----------
+if ! command -v docker > /dev/null 2>&1; then
+    if [ "$(uname)" = "Darwin" ]; then
+        echo "ERROR: Docker is not installed. Install Docker Desktop from"
+        echo "  https://www.docker.com/products/docker-desktop/"
+    else
+        echo "ERROR: Docker is not installed. Install Docker Engine, e.g.:"
+        echo "  curl -fsSL https://get.docker.com | sh"
+        echo "  sudo usermod -aG docker \$USER   (then log out and back in)"
+    fi
+    read -rp "Press Enter to exit..."
+    exit 1
+fi
 if ! docker version > /dev/null 2>&1; then
-    echo "Docker is not running. Starting Docker Desktop..."
-    open -a Docker 2>/dev/null || true
+    if [ "$(uname)" = "Darwin" ]; then
+        echo "Docker is not running. Starting Docker Desktop..."
+        open -a Docker 2>/dev/null || true
+    else
+        echo "Docker is not running. Trying to start the Docker service..."
+        (sudo systemctl start docker 2>/dev/null || systemctl start docker 2>/dev/null) || true
+    fi
     WAITED=0
     until docker version > /dev/null 2>&1; do
         sleep 5
         WAITED=$((WAITED + 5))
         if [ "$WAITED" -ge 120 ]; then
-            echo "ERROR: Docker did not start in time. Start Docker Desktop manually and re-run."
+            if [ "$(uname)" = "Darwin" ]; then
+                echo "ERROR: Docker did not start in time. Start Docker Desktop manually and re-run."
+            else
+                echo "ERROR: Docker did not start in time. Start it manually and re-run:"
+                echo "  sudo systemctl start docker"
+                echo "If your user lacks Docker access: sudo usermod -aG docker \$USER (then re-login)."
+            fi
             read -rp "Press Enter to exit..."
             exit 1
         fi

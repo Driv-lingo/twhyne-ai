@@ -71,9 +71,10 @@ jobs:
           mkdir -p dist
           # Windows
           cp launch-twhyne.bat dist/twhyne-ai-setup.bat
-          # Linux
-          cp launch-twhyne.command dist/twhyne-ai.AppImage
-          chmod +x dist/twhyne-ai.AppImage
+          # Linux: the launcher IS a shell script - ship it under its honest
+          # name. (It was previously renamed .AppImage, which it never was.)
+          cp launch-twhyne.command dist/twhyne-ai-linux.sh
+          chmod +x dist/twhyne-ai-linux.sh
 
       - name: Fetch the real DMG
         uses: actions/download-artifact@v4
@@ -93,13 +94,13 @@ jobs:
 
             ### Installation
 
-            **Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) must be installed.
+            **Requirements:** Docker. Windows/macOS: [Docker Desktop](https://www.docker.com/products/docker-desktop/). Linux: Docker Engine (`curl -fsSL https://get.docker.com | sh`).
 
             | Platform | Download |
             |---|---|
             | Windows | `twhyne-ai-setup.bat` — double-click to run |
-            | macOS | `twhyne-ai.dmg` — double-click (right-click → Open if Gatekeeper blocks it) |
-            | Linux | `twhyne-ai.AppImage` — `chmod +x twhyne-ai.AppImage && ./twhyne-ai.AppImage` |
+            | macOS | `twhyne-ai.dmg` — double-click (System Settings → Privacy & Security → Open Anyway if Gatekeeper blocks it) |
+            | Linux | `twhyne-ai-linux.sh` — in a terminal: `chmod +x twhyne-ai-linux.sh && ./twhyne-ai-linux.sh` |
 
             ### First run
             1. Get a free license key at **https://twhyne.com**
@@ -110,7 +111,7 @@ jobs:
           files: |
             dist/twhyne-ai-setup.bat
             dist/twhyne-ai.dmg
-            dist/twhyne-ai.AppImage
+            dist/twhyne-ai-linux.sh
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
