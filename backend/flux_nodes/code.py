@@ -229,12 +229,34 @@ class CodeNode(FluxNode):
                              "checked its outputs. Review the logic before "
                              "relying on it.")
                 return f"```python\n{code}\n```\n\n{label}"
-            # Clean refusal: broken code with a traceback is not an answer.
-            # Verify -> repair -> refuse; the failing draft never ships as if
-            # it were a deliverable (the user can re-ask or rephrase).
+            # Verification failed after one repair. What happens next is a
+            # POLICY DECISION, not the node's call: permissions.json's
+            # verification.on_code_failure chooses between
+            #   "refuse" (default) - broken code never ships;
+            #   "draft"           - ship the best candidate, loudly labeled
+            #                       UNVERIFIED with the actual error, so the
+            #                       user can salvage a near-miss.
+            # Either way the truth is stated; the knob only chooses whether
+            # a labeled draft is more useful to this install than a refusal.
             logger.warning(f"Code failed verification after retry: {err}")
             first_err = (err or "").strip().splitlines()
             first_err = first_err[-1][:160] if first_err else "verification failed"
+            mode = 'refuse'
+            try:
+                from rag_manager import get_rag_manager
+                vp = (get_rag_manager().get_permissions()
+                      .get('verification') or {})
+                if str(vp.get('on_code_failure', '')).lower() == 'draft':
+                    mode = 'draft'
+            except Exception:
+                pass
+            if mode == 'draft' and code:
+                return (f"```python\n{code}\n```\n\n"
+                        f"UNVERIFIED DRAFT: this code did not pass execution "
+                        f"checks ({first_err}) and one repair attempt did not "
+                        f"fix it. It is released because this install's "
+                        f"verification policy is set to 'draft'. Treat it as "
+                        f"a starting point, not a deliverable.")
             # Wording deliberately avoids the audit slop markers ("failed
             # automatic verification", tracebacks): a clean refusal must not
             # read like leaked internal diagnostics.
@@ -242,7 +264,9 @@ class CodeNode(FluxNode):
                     f"candidate did not pass the verification checks ({first_err}) "
                     "and one repair attempt did not fix it. Rather than hand "
                     "over unverified code, I'm stopping here - try rephrasing "
-                    "or narrowing the request.")
+                    "or narrowing the request. (Operators can set "
+                    "verification.on_code_failure to 'draft' in the policy "
+                    "console to receive labeled drafts instead.)")
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")

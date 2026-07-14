@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # compile below.
 RUN pip install --no-cache-dir \
         flask==3.1.1 flask-cors==6.0.1 requests==2.32.4 \
-        "numpy<2" Pillow==10.4.0 sympy==1.13.3 waitress==3.0.2 \
+        "numpy<2" Pillow==10.4.0 sympy==1.13.3 waitress==3.0.2 pypdf==5.1.0 \
         cmake ninja
 
 # Compile the inference engine for a PORTABLE x86-64 baseline. PyPI ships

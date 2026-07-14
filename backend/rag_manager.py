@@ -126,6 +126,12 @@ _DEFAULT_PERMISSIONS = {
     "sources": {},
     "restricted_default_roles": ["admin"],
     "default_allowed": True,
+    # VERIFICATION POLICY: what ships when a verifier says no.
+    #   on_code_failure: "refuse" (default) - broken code never leaves;
+    #                    "draft"  - ship the best candidate labeled
+    #                               UNVERIFIED with the real error.
+    # The label is never optional; the knob only picks refusal vs draft.
+    "verification": {"on_code_failure": "refuse"},
     # ACTION POLICY (layer 9 v0.1): capabilities the system may exercise on a
     # user's prior request. Only notify-style actions exist; each is
     # role-scoped and capped. "*" = any role.

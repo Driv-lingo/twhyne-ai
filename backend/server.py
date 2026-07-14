@@ -1282,7 +1282,60 @@ def create_app():
         os.makedirs(upload_folder, exist_ok=True)
         filepath = os.path.join(upload_folder, str(uuid.uuid4()) + '_' + file.filename)
         file.save(filepath)
-        return jsonify({'filepath': filepath, 'message': 'File uploaded successfully'})
+
+        # A chat attachment must actually be READ, not just saved. Images go
+        # to the vision node via image_path (existing behavior); documents
+        # are ingested into a knowledge base right here so the very next
+        # question can retrieve and cite them. Anything we cannot extract
+        # text from is refused honestly instead of silently ignored.
+        ext = os.path.splitext(file.filename or '')[1].lower()
+        image_exts = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}
+        if ext in image_exts:
+            return jsonify({'filepath': filepath, 'kind': 'image',
+                            'message': 'Image attached - it will be analyzed '
+                                       'by the vision node.'})
+        text = None
+        if ext == '.pdf':
+            try:
+                from pypdf import PdfReader
+                text = '\n'.join((pg.extract_text() or '')
+                                 for pg in PdfReader(filepath).pages).strip()
+            except Exception as e:
+                logger.error(f"PDF extraction failed for {file.filename}: {e}")
+        else:
+            try:
+                with open(filepath, 'rb') as f:
+                    raw = f.read(5 * 1024 * 1024)
+                text = raw.decode('utf-8', errors='ignore').strip()
+                # Binary masquerading as text: mostly non-printable -> refuse.
+                if text and sum(c.isprintable() or c.isspace()
+                                for c in text[:2000]) < 0.8 * len(text[:2000]):
+                    text = None
+            except Exception as e:
+                logger.error(f"Read failed for {file.filename}: {e}")
+        if not text:
+            return jsonify({'filepath': filepath, 'kind': 'unsupported',
+                            'message': f'"{file.filename}" was saved but no '
+                                       f'text could be extracted from it, so '
+                                       f'answers cannot cite it. Supported: '
+                                       f'PDF and plain-text formats (txt, md, '
+                                       f'csv, json, code), plus images.'})
+        try:
+            ds = get_rag_manager().create_dataset(
+                file.filename, 'Chat attachment', [{
+                    'filename': file.filename, 'type': 'text',
+                    'content': text, 'encoding': 'utf-8'}])
+        except Exception as e:
+            logger.error(f"Attachment ingest failed: {e}")
+            return jsonify({'error': 'The file was read but could not be '
+                                     'indexed. Try the Knowledge Bases '
+                                     'panel.'}), 500
+        return jsonify({'filepath': filepath, 'kind': 'document',
+                        'dataset_id': ds.get('id'),
+                        'chunks': ds.get('document_count'),
+                        'message': f'"{file.filename}" was read and indexed '
+                                   f'({ds.get("document_count")} sections). '
+                                   f'Answers can now retrieve and cite it.'})
 
     def _dataset_age_days(dataset_id):
         """Age of the dataset in whole days, or None (legacy datasets

@@ -497,12 +497,21 @@ function App() {
         // Make upload request
         const uploadRes = await axios.post(endpoint, payload, { headers: { 'Content-Type': 'multipart/form-data' }, signal });
         uploadedFilePath = uploadRes.data.filepath;
+        const upKind = uploadRes.data.kind;
         setFile(null); // Clear the file after upload
+        // Tell the user what actually happened to their attachment —
+        // ingested document, image for vision, or honestly unsupported.
+        if (uploadRes.data.message) {
+          setHistory(h => [...h, { role: 'system', content: '📎 ' + uploadRes.data.message }]);
+        }
         // Now make a query request with the uploaded file path
         endpoint = 'http://127.0.0.1:5002/query';
         payload = {
           prompt: userQuery,
-          image_path: uploadedFilePath,
+          // image_path only means something to the vision node; documents
+          // were ingested into a knowledge base by /upload and are served
+          // through retrieval, not a path.
+          image_path: upKind === 'image' ? uploadedFilePath : null,
           conversation_history: history,
           client_request_id: clientRequestId
         };
@@ -981,7 +990,7 @@ function App() {
               
               <div className="query-options">
                 <div className="file-input">
-                  <label htmlFor="file-input" title="Attach an image for vision analysis">
+                  <label htmlFor="file-input" title="Attach an image (analyzed by vision) or a document — PDF/text is read, indexed, and citable">
                     {file ? file.name : "Attach File"}
                   </label>
                   <input
