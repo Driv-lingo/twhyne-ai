@@ -233,6 +233,7 @@ function App() {
   // itself never acts between reads.
   const [timers, setTimers] = useState([]);
   const seenElapsedRef = useRef(new Set());
+  const firstTimerPollRef = useRef(true);
   useEffect(() => {
     let alive = true;
     const poll = async () => {
@@ -241,6 +242,16 @@ function App() {
         if (!alive) return;
         const list = (r.data && r.data.timers) || [];
         setTimers(list);
+        if (firstTimerPollRef.current) {
+          // Anything already elapsed before this session opened is STALE:
+          // acknowledge silently, never announce it. Announcements are only
+          // for elapses observed live in this session.
+          firstTimerPollRef.current = false;
+          list.forEach(t => {
+            if (t.status === 'elapsed') seenElapsedRef.current.add(t.id);
+          });
+          return;
+        }
         list.forEach(t => {
           if (t.status === 'elapsed' && !seenElapsedRef.current.has(t.id)) {
             seenElapsedRef.current.add(t.id);
@@ -264,8 +275,13 @@ function App() {
     try { await axios.delete(`http://127.0.0.1:5002/api/timers/${id}`); } catch (e) {}
     setTimers(ts => ts.map(t => t.id === id ? { ...t, status: 'cancelled' } : t));
   };
+  // Strip shows live timers only: pending, or elapsed within the last ten
+  // minutes. Stale elapsed timers neither render nor notify — they remain
+  // queryable ("check my timers") and in the audit ledger, but the UI never
+  // nags about the past.
   const visibleTimers = timers.filter(
-    t => t.status === 'pending' || t.status === 'elapsed');
+    t => t.status === 'pending' ||
+      (t.status === 'elapsed' && Date.now() - (t.fired_at || 0) * 1000 < 600000));
 
   // Scroll to bottom of chat
   const scrollToBottom = () => {

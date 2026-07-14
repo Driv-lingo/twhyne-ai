@@ -764,7 +764,15 @@ def _timers_observe(role=None, subject=None):
                 t['status'] = 'elapsed'
                 t['fired_at'] = now
                 fired.append(t)
-        if fired:
+        # Housekeeping at read time (still observation-driven, no background
+        # work): finished timers older than 7 days leave the working store.
+        # Their creation/elapse records remain in the audit ledger forever.
+        cutoff = now - 7 * 86400
+        kept = [t for t in timers
+                if t.get('status') == 'pending'
+                or float(t.get('fired_at') or t.get('created_at') or 0) >= cutoff]
+        if fired or len(kept) != len(timers):
+            timers = kept
             _timers_save(timers)
     for t in fired:
         _timer_audit('timer-elapsed', t, t.get('role'))
