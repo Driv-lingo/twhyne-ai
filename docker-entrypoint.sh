@@ -39,6 +39,22 @@ else
     exit 1
 fi
 
+# SIGNALS: this script is PID 1, and PID 1 gets no default signal handling -
+# without an explicit trap, docker's forwarded Ctrl+C / docker stop is
+# silently dropped and the container only dies to SIGKILL (observed as
+# "Ctrl+C does not interrupt" on Linux; same on every platform).
+BACKEND_PID=""
+FRONTEND_PID=""
+shutdown() {
+    echo ""
+    echo "Stopping Twhyne AI ..."
+    [ -n "$FRONTEND_PID" ] && kill "$FRONTEND_PID" 2>/dev/null
+    [ -n "$BACKEND_PID" ] && kill "$BACKEND_PID" 2>/dev/null
+    wait 2>/dev/null
+    exit 0
+}
+trap shutdown INT TERM
+
 # Start backend
 echo "Starting backend on :5002 ..."
 cd /app/backend
