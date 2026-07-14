@@ -46,7 +46,7 @@ const RAGManager = ({ onNodeCreated }) => {
     if (!isLoading) { setIngestProgress(''); return; }
     const iv = setInterval(async () => {
       try {
-        const r = await axios.get('http://localhost:5002/progress');
+        const r = await axios.get('http://127.0.0.1:5002/progress');
         const { state, detail } = r.data || {};
         if (state === 'indexing') setIngestProgress(detail || 'indexing…');
       } catch (e) { /* keep last text */ }
@@ -56,7 +56,7 @@ const RAGManager = ({ onNodeCreated }) => {
 
   const checkRAGStatus = async (retries = 5) => {
     try {
-      const response = await axios.get('http://localhost:5002/api/rag/status');
+      const response = await axios.get('http://127.0.0.1:5002/api/rag/status');
       setRagStatus(response.data);
     } catch (error) {
       if (retries > 0) {
@@ -73,7 +73,7 @@ const RAGManager = ({ onNodeCreated }) => {
 
   const loadDatasets = async () => {
     try {
-      const response = await axios.get('http://localhost:5002/api/rag/datasets');
+      const response = await axios.get('http://127.0.0.1:5002/api/rag/datasets');
       setDatasets(response.data.datasets || []);
     } catch (error) {
       console.error('Error loading datasets:', error);
@@ -145,7 +145,7 @@ const RAGManager = ({ onNodeCreated }) => {
 
     setIsLoading(true);
     try {
-      const response = await axios.post('http://localhost:5002/api/rag/datasets', {
+      const response = await axios.post('http://127.0.0.1:5002/api/rag/datasets', {
         name: datasetName,
         description: datasetDescription,
         files: uploadedFiles
@@ -178,7 +178,7 @@ const RAGManager = ({ onNodeCreated }) => {
     if (!window.confirm('Are you sure you want to delete this dataset?')) return;
 
     try {
-      await axios.delete(`http://localhost:5002/api/rag/datasets/${datasetId}`);
+      await axios.delete(`http://127.0.0.1:5002/api/rag/datasets/${datasetId}`);
       loadDatasets();
       if (selectedDataset?.id === datasetId) {
         setSelectedDataset(null);
@@ -200,7 +200,7 @@ const RAGManager = ({ onNodeCreated }) => {
     setIsLoading(true);
     try {
       const response = await axios.post(
-        `http://localhost:5002/api/rag/datasets/${selectedDataset.id}/search`,
+        `http://127.0.0.1:5002/api/rag/datasets/${selectedDataset.id}/search`,
         { query: searchQuery, top_k: 5 }
       );
       setSearchResults(response.data.results || []);

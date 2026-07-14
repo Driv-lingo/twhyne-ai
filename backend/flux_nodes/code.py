@@ -165,9 +165,12 @@ class CodeNode(FluxNode):
     def _generate_once(self, model, prompt_text: str) -> str:
         # Stop sequences keep the model from rambling into invented follow-up
         # exercises after it has answered (observed in benchmark output).
+        # 768 not 512: class-based answers (linked list, tree) plus their
+        # self-tests routinely overran 512 and got truncated mid-test, then
+        # failed verification for LENGTH rather than logic.
         response = model(
             self._wrap_prompt(prompt_text),
-            max_tokens=512,
+            max_tokens=768,
             temperature=0.4,
             top_p=0.9,
             top_k=40,

@@ -1430,7 +1430,11 @@ def create_app():
                 verdict = ('refused' if resp_low
                            and ('do not have' in resp_low
                                 or 'not in the' in resp_low
-                                or 'not authorized' in resp_low)
+                                or 'not authorized' in resp_low
+                                # code-verification refusal: the node stopped
+                                # rather than ship unverified code - the chip
+                                # must say REFUSED, not EXECUTED
+                                or 'could not produce verified code' in resp_low)
                            else 'cancelled' if data.get('cancelled')
                            else 'answered')
                 # SENSITIVE-REQUEST VERDICTS: asking for a password, key,
