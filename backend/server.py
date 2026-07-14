@@ -1131,6 +1131,17 @@ def create_app():
         file.save(filepath)
         return jsonify({'filepath': filepath, 'message': 'File uploaded successfully'})
 
+    def _dataset_age_days(dataset_id):
+        """Age of the dataset in whole days, or None (legacy datasets
+        stored a uuid in created_at and have unknowable age)."""
+        try:
+            from datetime import datetime as _dt
+            info = get_rag_manager().datasets.get(dataset_id) or {}
+            created = _dt.fromisoformat(str(info.get('created_at')))
+            return max(0, (_dt.now() - created).days)
+        except Exception:
+            return None
+
     def _retrieve(prompt, dataset_id, role='public'):
         """Semantic retrieval. Returns (context, sources, top_score).
 
@@ -1254,6 +1265,12 @@ def create_app():
                                   'passes': int(data.get('retrieval_passes') or
                                                 (1 if data.get('grounded') else 0))},
                     'generation': how,
+                    # Temporal self-report: answered when, from data how old.
+                    # A system without a clock cannot state staleness; the
+                    # orchestrator can, so every grounded answer discloses it.
+                    'time': {'answered_at': __import__('datetime').datetime
+                             .now().isoformat(timespec='seconds'),
+                             'dataset_age_days': data.get('dataset_age_days')},
                     'redaction': 'fired' if data.get('redacted') else 'clean',
                     'verdict': verdict,
                     'sensitive_request': sensitive_ask,
@@ -1280,6 +1297,10 @@ def create_app():
             logger.error(f"Redaction/audit hook error: {e}")
         return resp
 
+    _TIME_Q_RE = re.compile(
+        r"^\s*(what('?s| is) (the )?(time|date|current (time|date)|today'?s date)|"
+        r"what day is (it|today)|what time is it)\b", re.I)
+
     @app.route('/query', methods=['POST', 'OPTIONS'])
     def submit_query():
         if request.method == 'OPTIONS':
@@ -1292,6 +1313,21 @@ def create_app():
             if not data:
                 return jsonify({'error': 'No JSON data provided'}), 400
             prompt = data.get('prompt', '')
+
+            # CLOCK: a model has no persistent existence between calls and
+            # therefore no clock; asking it the time yields training-data
+            # hallucination. The orchestrator IS a persistent process, so
+            # time questions are answered deterministically here - the same
+            # reasoning that sends arithmetic to SymPy, applied to time.
+            if _TIME_Q_RE.match(prompt or ''):
+                from datetime import datetime as _dt
+                now = _dt.now()
+                text = now.strftime('%A, %B %d, %Y, %H:%M %Z').strip().rstrip(',') \
+                       + ' (local system time)'
+                return jsonify({'result': text, 'response': text,
+                                'node_id': 'clock', 'sources': [],
+                                'grounded': False,
+                                'role': str(data.get('role', 'public') or 'public').strip().lower()})
             node_id = data.get('node_id')
             conversation_history = data.get('conversation_history', [])
             if len(conversation_history) > 10:
@@ -1528,6 +1564,7 @@ def create_app():
                                'grounded': True, 'top_score': top_score,
                                'extractive': True, 'role': role,
                                'retrieval_passes': retrieval_passes,
+                               'dataset_age_days': _dataset_age_days(dataset_id),
                                'evidence': _evidence_records(
                                    [r for r in kept if r.get('source') == _src] or kept,
                                    span=_span, span_source=_src)}
@@ -1540,7 +1577,9 @@ def create_app():
                 recent = _recent_context(conversation_history)
                 hist_block = (f"Recent conversation (for reference only):\n{recent}\n\n"
                               if recent else "")
+                from datetime import datetime as _dt
                 grounded = (
+                    f"Current date: {_dt.now().strftime('%Y-%m-%d')}.\n"
                     "You are a careful assistant. Answer the question using ONLY the "
                     "information in the sources below, and cite the source name(s). "
                     "If the answer is not fully contained in the sources, say what IS "
@@ -1584,6 +1623,7 @@ def create_app():
                            'node_id': 'language-mistral-7b', 'sources': sources,
                            'grounded': True, 'top_score': top_score, 'role': role,
                            'retrieval_passes': retrieval_passes,
+                           'dataset_age_days': _dataset_age_days(dataset_id),
                            'evidence': _evidence_records(
                                [r for r in kept if r.get('source') in sources] or kept)}
                 # Don't cache error text - a transient failure must not

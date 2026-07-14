@@ -299,8 +299,12 @@ class SemanticRAGManager:
                                       "chunk_index": i, "embedding": _embed(chunk)})
             except Exception as e:
                 logger.error(f"Error processing file: {e}")
+        from datetime import datetime as _dt
         self.datasets[dataset_id] = {"name": name, "description": description,
-                                     "documents": documents, "created_at": str(uuid.uuid4())}
+                                     "documents": documents,
+                                     # a real timestamp (was a stray uuid), so
+                                     # answers can self-report data staleness
+                                     "created_at": _dt.now().isoformat(timespec='seconds')}
         self._matrix_cache.pop(dataset_id, None)
         self._save_datasets()
         logger.info(f"Created dataset '{name}' with {len(documents)} chunks")
