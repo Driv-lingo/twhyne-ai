@@ -1452,6 +1452,39 @@ def create_app():
             # and count-bounded, audited) and FIRES AT READ TIME: its state
             # is computed from the clock whenever the timer list is observed.
             # The system never notifies or acts on its own between reads.
+            # Checking timers IS the firing mechanism (read-time): observing
+            # the list recomputes state from the clock.
+            if re.search(r"\b(check|list|show|status of|how long)\b.{0,30}"
+                         r"\b(timer|timers|reminder|reminders|countdown)\b",
+                         prompt or '', re.I):
+                from identity import resolve_role as _rr
+                _role, _sig, _iderr = _rr(request, data)
+                if _iderr:
+                    return jsonify({'error': _iderr,
+                                    'identity_required': True}), 401
+                tl = _timers_observe(_role)
+                if not tl:
+                    text = "You have no timers."
+                else:
+                    now = time.time()
+                    lines = []
+                    for t in tl[:10]:
+                        if t['status'] == 'pending':
+                            rem = max(0, int(t['due_at'] - now))
+                            lines.append(f"- {t['label'] or t['id']}: "
+                                         f"{rem // 60}m {rem % 60}s remaining")
+                        else:
+                            lines.append(f"- {t['label'] or t['id']}: "
+                                         f"{t['status'].upper()}")
+                    text = ("Your timers (state computed from the clock as "
+                            "you asked - read-time firing):\n"
+                            + "\n".join(lines))
+                return jsonify({'result': text, 'response': text,
+                                'node_id': 'action-policy', 'sources': [],
+                                'grounded': False, 'role': _role,
+                                'timers': tl,
+                                'gates': {'verdict': 'answered',
+                                          'action': 'timer.notify'}})
             if _TIMER_Q_RE.search(prompt or ''):
                 m = re.search(r"(\d+(?:\.\d+)?)\s*(hour|hr|minute|min|second|sec)",
                               prompt, re.I)
