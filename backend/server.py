@@ -1483,11 +1483,17 @@ def create_app():
             # and count-bounded, audited) and FIRES AT READ TIME: its state
             # is computed from the clock whenever the timer list is observed.
             # The system never notifies or acts on its own between reads.
-            # Checking timers IS the firing mechanism (read-time): observing
-            # the list recomputes state from the clock.
-            if re.search(r"\b(check|list|show|status of|how long)\b.{0,30}"
-                         r"\b(timer|timers|reminder|reminders|countdown)\b",
-                         prompt or '', re.I):
+            # ANY mention of timers that is not a creation request routes to
+            # deterministic timer state - never to the language model. The
+            # model has no knowledge of timers and will confidently deny
+            # they exist ("I didn't set a timer"), contradicting the
+            # system's own audited state - the exact hallucination class the
+            # kernel exists to prevent. Checking timers IS the firing
+            # mechanism (read-time): observing recomputes state from the
+            # clock.
+            if (re.search(r"\b(timer|timers|reminder|reminders|countdown|"
+                          r"alarm)\b", prompt or '', re.I)
+                    and not _TIMER_Q_RE.search(prompt or '')):
                 from identity import resolve_identity as _ri
                 _subj, _role, _sig, _iderr = _ri(request, data)
                 if _iderr:
@@ -1497,19 +1503,32 @@ def create_app():
                 if not tl:
                     text = "You have no timers."
                 else:
+                    from datetime import datetime as _dt
                     now = time.time()
-                    lines = []
+                    lines, any_elapsed = [], False
                     for t in tl[:10]:
                         if t['status'] == 'pending':
                             rem = max(0, int(t['due_at'] - now))
                             lines.append(f"- {t['label'] or t['id']}: "
                                          f"{rem // 60}m {rem % 60}s remaining")
                         else:
-                            lines.append(f"- {t['label'] or t['id']}: "
-                                         f"{t['status'].upper()}")
+                            if t['status'] == 'elapsed':
+                                any_elapsed = True
+                                due = _dt.fromtimestamp(
+                                    t['due_at']).strftime('%H:%M:%S')
+                                lines.append(f"- {t['label'] or t['id']}: "
+                                             f"ELAPSED (was due {due})")
+                            else:
+                                lines.append(f"- {t['label'] or t['id']}: "
+                                             f"{t['status'].upper()}")
                     text = ("Your timers (state computed from the clock as "
                             "you asked - read-time firing):\n"
                             + "\n".join(lines))
+                    if any_elapsed:
+                        text += ("\nTwhyne does not push notifications: a "
+                                 "timer's state is computed when it is "
+                                 "observed - by you asking, or by the app "
+                                 "polling the timer list on your behalf.")
                 return jsonify({'result': text, 'response': text,
                                 'node_id': 'action-policy', 'sources': [],
                                 'grounded': False, 'role': _role,
