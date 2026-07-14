@@ -1300,6 +1300,9 @@ def create_app():
     _TIME_Q_RE = re.compile(
         r"^\s*(what('?s| is) (the )?(time|date|current (time|date)|today'?s date)|"
         r"what day is (it|today)|what time is it)\b", re.I)
+    _TIMER_Q_RE = re.compile(
+        r"\b(set|start|run|create)\s+(a\s+)?(timer|alarm|reminder|countdown)\b|"
+        r"\bremind me\b|\bwake me\b|\bin \d+\s*(min|minute|hour|second|sec)", re.I)
 
     @app.route('/query', methods=['POST', 'OPTIONS'])
     def submit_query():
@@ -1319,6 +1322,7 @@ def create_app():
             # hallucination. The orchestrator IS a persistent process, so
             # time questions are answered deterministically here - the same
             # reasoning that sends arithmetic to SymPy, applied to time.
+            _role = str(data.get('role', 'public') or 'public').strip().lower()
             if _TIME_Q_RE.match(prompt or ''):
                 from datetime import datetime as _dt
                 now = _dt.now()
@@ -1326,8 +1330,27 @@ def create_app():
                        + ' (local system time)'
                 return jsonify({'result': text, 'response': text,
                                 'node_id': 'clock', 'sources': [],
-                                'grounded': False,
-                                'role': str(data.get('role', 'public') or 'public').strip().lower()})
+                                'grounded': False, 'role': _role})
+            # Timer / reminder: a request for UNPROMPTED FUTURE ACTION. The
+            # system will not fake this - acting later without being asked in
+            # the moment is exactly what the tool/action policy engine (layer
+            # 9) must govern. State the boundary honestly instead of pretending.
+            if _TIMER_Q_RE.search(prompt or ''):
+                text = ("I can tell you the current time, but I can't yet set "
+                        "timers or reminders - that requires taking an action "
+                        "on my own later, which Twhyne only does under an "
+                        "explicit, permissioned action policy (on the roadmap, "
+                        "not built). Use your device's timer for now. "
+                        "(Current time: "
+                        + __import__('datetime').datetime.now()
+                          .strftime('%H:%M') + ".)")
+                return jsonify({'result': text, 'response': text,
+                                'node_id': 'clock', 'sources': [],
+                                'grounded': False, 'role': _role,
+                                'gates': {'verdict': 'refused',
+                                          'verdict_reason': 'unprompted future '
+                                          'action requires the tool/action '
+                                          'policy engine (not built)'}})
             node_id = data.get('node_id')
             conversation_history = data.get('conversation_history', [])
             if len(conversation_history) > 10:
@@ -1923,6 +1946,76 @@ def create_app():
         role, signed, err = resolve_role(request, body)
         return jsonify({'role': role, 'signed': signed,
                         'error': err}), (401 if err else 200)
+
+    @app.route('/api/admin/day-review', methods=['GET'])
+    def admin_day_review():
+        """Governed reflection v0: the system reviews its own day over the
+        ledger and reports to a human. READ-ONLY - it summarizes and proposes,
+        it changes nothing (consolidation rung one, safest form). Optional
+        ?hours=24 window; admin-gated like the rest of /api/admin.
+        """
+        import json as _json
+        from collections import Counter
+        admin_token = os.environ.get('TWHYNE_ADMIN_TOKEN', '').strip()
+        if admin_token:
+            supplied = request.headers.get('X-Admin-Token', '').strip()
+            if not supplied or not _hmac_equal(supplied, admin_token):
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        try:
+            hours = float(request.args.get('hours', 24))
+        except Exception:
+            hours = 24
+        cutoff = time.time() - hours * 3600
+        recs = []
+        if _AUDIT_PATH.exists():
+            with open(_AUDIT_PATH) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        r = _json.loads(line)
+                    except Exception:
+                        continue
+                    if float(r.get('ts') or 0) >= cutoff:
+                        recs.append(r)
+        total = len(recs)
+        verdicts = Counter((r.get('verdict') or 'answered') for r in recs)
+        roles = Counter((r.get('role') or 'public') for r in recs)
+        redactions = sum(1 for r in recs if r.get('redacted'))
+        cached = sum(1 for r in recs if r.get('cached'))
+        # Observations a human should see - stated, never acted on.
+        obs = []
+        answered = verdicts.get('answered', 0)
+        refused = verdicts.get('refused', 0)
+        if total and refused / total > 0.4:
+            obs.append(f"High refusal share ({refused}/{total}) - either heavy "
+                       f"probing or a corpus/permission gap worth reviewing.")
+        if redactions:
+            obs.append(f"{redactions} output-redaction event(s) - review whether "
+                       f"queries were eliciting secrets.")
+        ok, count, broken = _audit_verify()
+        if not ok:
+            obs.append(f"Audit chain broken at record {broken} - investigate.")
+        top_role = roles.most_common(1)
+        if top_role and total:
+            obs.append(f"Most active role: {top_role[0][0]} "
+                       f"({top_role[0][1]}/{total} queries).")
+        if not total:
+            obs.append("No activity in the window.")
+        summary = (f"In the last {int(hours)}h: {total} queries "
+                   f"({answered} answered, {refused} refused, {redactions} "
+                   f"redacted, {cached} from cache). Audit chain "
+                   f"{'intact' if ok else 'BROKEN'}.")
+        return jsonify({'success': True, 'window_hours': hours,
+                        'generated_at': __import__('datetime').datetime.utcnow().isoformat(),
+                        'summary': summary,
+                        'counts': {'total': total, 'verdicts': dict(verdicts),
+                                   'roles': dict(roles), 'redactions': redactions,
+                                   'cached': cached},
+                        'observations': obs,
+                        'note': 'Read-only reflection. Proposes nothing '
+                                'executable; a human decides any action.'}), 200
 
     @app.route('/api/admin/alerts', methods=['GET'])
     def admin_alerts():
