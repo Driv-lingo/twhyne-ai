@@ -98,7 +98,14 @@ def get_shared_model(model_path, **overrides):
         if model is not None:
             return model
 
-        for old_key in list(_cache):
+        # Residency budget: 1 model by default (12GB container). With more
+        # memory (TWHYNE_MEM=18g + TWHYNE_MAX_RESIDENT=2) both 7Bs stay
+        # loaded and the 2-4 minute code<->chat swap disappears entirely -
+        # the single biggest speed lever on a big-RAM machine.
+        max_resident = max(1, int(os.environ.get('TWHYNE_MAX_RESIDENT', '1')
+                                  or 1))
+        while len(_cache) >= max_resident:
+            old_key = next(iter(_cache))
             logger.info(f"Evicting {old_key} to make room for {key}")
             old = _cache.pop(old_key)
             try:
