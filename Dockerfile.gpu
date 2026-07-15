@@ -1,0 +1,57 @@
+# Twhyne GPU image (twhyne/twhyne:gpu)
+# CUDA-enabled llama.cpp: 10-30x generation speed on NVIDIA hardware, and
+# the doorway to 32B-class models on 24GB cards. IMPORTANT PROPERTY: a CUDA
+# build still runs CPU-only when no GPU is present, so CI (which has no GPU)
+# can smoke-test boot + answers; GPU offload itself is validated on rented
+# GPU minutes per docs/GPU_VALIDATION.md before any release is announced.
+
+# ---- Stage 1: build the React frontend (identical to CPU image) ----
+FROM node:18-bullseye AS frontend
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend/ ./
+RUN npm run build
+
+# ---- Stage 2: CUDA runtime + Python backend ----
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+ENV PYTHONUNBUFFERED=1
+ARG TWHYNE_BUILD=dev
+ENV TWHYNE_BUILD=${TWHYNE_BUILD}
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 python3-pip python3.11-dev curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.11 /usr/local/bin/python3
+
+RUN python3 -m pip install --no-cache-dir \
+        flask==3.1.1 flask-cors==6.0.1 requests==2.32.4 \
+        "numpy<2" Pillow==10.4.0 sympy==1.13.3 waitress==3.0.2 pypdf==5.1.0
+
+# Prebuilt CUDA wheel: no 40-minute nvcc compile, no build-toolchain in the
+# image. cu124 wheels are built for standard x86-64 (no AVX-512 assumptions).
+RUN python3 -m pip install --no-cache-dir llama-cpp-python==0.3.2 \
+        --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
+
+WORKDIR /app
+COPY backend/ /app/backend/
+COPY --from=frontend /app/frontend/build /app/frontend/build
+
+# IP hardening: same discipline as the CPU image - shipped images carry
+# bytecode, not readable source.
+RUN python3 -m compileall -b -q /app/backend \
+    && find /app/backend -name "*.py" -delete \
+    && (find /app/backend -name "__pycache__" -type d -exec rm -rf {} + || true)
+
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+RUN mkdir -p /app/models /app/backend/rag_storage
+
+# GPU offload default: all layers when a GPU is visible (llama.cpp ignores
+# this and runs CPU when none is). Operators can tune per model size.
+ENV TWHYNE_GPU_LAYERS=-1
+
+EXPOSE 3000 5002
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
