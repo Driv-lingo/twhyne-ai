@@ -297,6 +297,6 @@ class CodeNode(FluxNode):
 
 {ctx}Request: {query_text}
 
-Provide ONE complete, ready-to-run Python code block containing: the function with necessary imports and brief comments, followed by 3 module-level assert statements that test a typical case, an empty/edge case, and the expected behavior. Do not add extra exercises or commentary after the code.
+Provide ONE complete, ready-to-run Python code block containing: the function with necessary imports and brief comments, followed by 3 module-level assert statements that test a typical case, an empty/edge case, and the expected behavior. IMPORTANT: never compare custom objects with == in asserts (classes without __eq__ compare by identity and the assert always fails) - convert results to plain values first, e.g. for a linked list assert on the sequence of .val fields as a Python list. Do not add extra exercises or commentary after the code.
 
 Code:"""

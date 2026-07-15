@@ -520,6 +520,10 @@ function App() {
           // were ingested into a knowledge base by /upload and are served
           // through retrieval, not a path.
           image_path: upKind === 'image' ? uploadedFilePath : null,
+          // Scope the question to the document that was JUST attached -
+          // "key points of the attached document" must never fall through
+          // to the ungrounded model.
+          dataset_id: upKind === 'document' ? (uploadRes.data.dataset_id || null) : null,
           conversation_history: history,
           client_request_id: clientRequestId
         };

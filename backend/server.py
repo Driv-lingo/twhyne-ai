@@ -1746,6 +1746,28 @@ def create_app():
                 if named_ds:
                     dataset_id = named_ds
                     logger.info(f"Dataset named in prompt -> {named_ds}")
+            # STICKY FOLLOW-UP: "What years are present?" right after a
+            # cited answer from a KB is about THAT KB - conversations have
+            # subjects. If the last assistant turn cited sources, follow-up
+            # questions stay scoped to the dataset those sources live in
+            # (a new named KB or an explicit selection always overrides).
+            if not dataset_id and conversation_history:
+                try:
+                    for _m in reversed(conversation_history):
+                        if _m.get('role') == 'assistant' and _m.get('sources'):
+                            _src0 = _m['sources'][0]
+                            rm_ = get_rag_manager()
+                            for _did, _info in rm_.datasets.items():
+                                if any((d.get('source') or '') == _src0
+                                       for d in _info.get('documents', [])):
+                                    dataset_id = _did
+                                    named_ds = _did
+                                    logger.info(f"Sticky follow-up dataset "
+                                                f"-> {_did} (via {_src0})")
+                                    break
+                            break
+                except Exception:
+                    pass
             forced = bool(data.get('use_rag')) or bool(dataset_id)
             if not forced:
                 specialist = _route_query(prompt, node_registry)
@@ -1842,6 +1864,28 @@ def create_app():
             # back empty and the system refuses while holding the whole
             # document. The right context for an overview question is the
             # document itself, in order, under the same permission boundary.
+            # Lexical veto for AUTO-grounding - runs BEFORE the overview
+            # check so a summarize-intent question that fails the veto can
+            # still take the overview path instead of falling to the
+            # ungrounded model ("key points of the attached document"
+            # rambled about the previous conversation - observed live).
+            # BGE's cosine floor on some corpora sits above the threshold
+            # ("reverse a binary tree" scored 0.657 against a Taco Bell
+            # 10-K); a genuinely relevant chunk shares at least one
+            # meaningful word with the question.
+            if should_ground and not forced and kept:
+                pwords = {w for w in re.findall(r'[a-z0-9]+', prompt.lower())
+                          if len(w) > 3 and w not in _STOP_LITE}
+                top_text = kept[0].get('content', '').lower()
+                hits = sum(1 for w in pwords if w in top_text)
+                # Two overlapping words required (when the question has that
+                # many): one shared word let a brand-color PDF ground "mixing
+                # blue and yellow paint" just because it mentioned "yellow".
+                need = min(2, len(pwords))
+                if pwords and hits < need:
+                    logger.info("Auto-grounding vetoed: insufficient lexical overlap with top chunk")
+                    should_ground = False
+
             overview_mode = False
             # "tell me about X" / "describe X" where X resolved to a KB is an
             # overview request by nature - it takes the overview path even
@@ -1905,24 +1949,6 @@ def create_app():
                     should_ground = True
                     logger.info(f"Overview mode: summarizing '{ds_name}' "
                                 f"({len(kept)} chunks in document order)")
-
-            # Lexical veto for AUTO-grounding: BGE's cosine floor on some
-            # corpora sits above the threshold ("reverse a binary tree"
-            # scored 0.657 against a Taco Bell 10-K). A genuinely relevant
-            # chunk shares at least one meaningful word with the question;
-            # a pure embedding-floor artifact shares none.
-            if should_ground and not forced and not overview_mode and kept:
-                pwords = {w for w in re.findall(r'[a-z0-9]+', prompt.lower())
-                          if len(w) > 3 and w not in _STOP_LITE}
-                top_text = kept[0].get('content', '').lower()
-                hits = sum(1 for w in pwords if w in top_text)
-                # Two overlapping words required (when the question has that
-                # many): one shared word let a brand-color PDF ground "mixing
-                # blue and yellow paint" just because it mentioned "yellow".
-                need = min(2, len(pwords))
-                if pwords and hits < need:
-                    logger.info("Auto-grounding vetoed: insufficient lexical overlap with top chunk")
-                    should_ground = False
 
             if forced and not context:
                 # Distinguish two cases the user must be able to tell apart:

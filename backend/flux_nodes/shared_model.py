@@ -65,6 +65,28 @@ def _fast_local_copy(path: str):
         return str(path), False
 
 
+def _physical_cores():
+    """Physical core count. Hyperthreads HURT memory-bandwidth-bound
+    inference (two threads fighting over one core's bandwidth), so the
+    default of 'all logical cores minus one' was oversubscribing."""
+    try:
+        pairs = set()
+        cur = {}
+        with open('/proc/cpuinfo') as f:
+            for line in f:
+                if line.startswith('physical id'):
+                    cur['p'] = line.split(':')[1].strip()
+                elif line.startswith('core id'):
+                    pairs.add((cur.get('p', '0'), line.split(':')[1].strip()))
+                elif not line.strip():
+                    cur = {}
+        if pairs:
+            return len(pairs)
+    except Exception:
+        pass
+    return max(1, (os.cpu_count() or 4) // 2)
+
+
 def get_shared_model(model_path, **overrides):
     """Return a shared Llama instance for *model_path*, loading it once.
 
@@ -94,8 +116,12 @@ def get_shared_model(model_path, **overrides):
             # models hot, so swapping back to one is near-instant. Over the
             # slow Docker volume bridge, a sequential full read is faster.
             use_mmap=is_local,
-            use_mlock=False,
-            n_threads=max(2, (os.cpu_count() or 4) - 1),
+            # mlock pins weights in RAM so the OS can't page them out
+            # mid-generation (the mysterious "sometimes 3x slower" answers).
+            # Opt-out via TWHYNE_MLOCK=0 for low-RAM machines.
+            use_mlock=os.environ.get('TWHYNE_MLOCK', '1') not in ('0', 'false'),
+            n_threads=int(os.environ.get('TWHYNE_THREADS', '0') or 0)
+            or max(2, _physical_cores()),
             n_gpu_layers=int(os.environ.get('TWHYNE_GPU_LAYERS', '0')),
             verbose=False,
         )
