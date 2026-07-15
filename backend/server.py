@@ -1135,7 +1135,16 @@ def _download_gguf(url, dest, job_id):
 
 def create_app():
     app = Flask(__name__)
-    CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization"]}}, supports_credentials=False)
+    # DELETE and PUT were missing here, so the browser's CORS preflight
+    # rejected every knowledge-base delete / role update as "backend
+    # unreachable" - on every platform - while POSTs worked fine.
+    CORS(app, resources={r"/*": {"origins": "*",
+                                 "methods": ["GET", "POST", "PUT", "DELETE",
+                                             "OPTIONS"],
+                                 "allow_headers": ["Content-Type",
+                                                   "Authorization",
+                                                   "X-Admin-Token"]}},
+         supports_credentials=False)
 
     node_registry = NodeRegistry()
     models_dir = Path(__file__).parent.parent / 'models'

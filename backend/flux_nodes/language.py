@@ -53,11 +53,15 @@ class LanguageNode(FluxNode):
             formatted_prompt = self._format_prompt(prompt, conversation_history)
             response = model(
                 formatted_prompt,
-                # 320-token default cap: on CPU-only hosts generation runs
-                # ~1 tok/s under load, so 512 tokens meant multi-minute worst
-                # cases. Callers can tighten further (grounded answers pass
-                # 220) but never exceed the cap.
-                max_tokens=min(int(kwargs.get('max_tokens', 320)), 320),
+                # 900-token ceiling (was 320, which truncated list-style
+                # grounded answers mid-item - observed live on a commodity
+                # list). Not unlimited: on CPU a runaway generation is a
+                # 15-minute answer, and the stop sequences below are the
+                # real guard against rambling. TWHYNE_MAX_TOKENS overrides.
+                max_tokens=min(
+                    int(kwargs.get('max_tokens',
+                                   os.environ.get('TWHYNE_MAX_TOKENS', 900))),
+                    int(os.environ.get('TWHYNE_MAX_TOKENS', 900))),
                 temperature=0.5, top_p=0.8, top_k=20,
                 # Stop sequences: the grounded prompt ends "Question: X / Answer:",
                 # and without these the model continues inventing extra Q/A
