@@ -193,6 +193,48 @@ class CodeNode(FluxNode):
             pass
         return response['choices'][0]['text'].strip()
 
+    @staticmethod
+    def _user_example_asserts(prompt: str, code: str) -> str:
+        """Turn the USER'S examples into executable tests - the spec belongs
+        to the person who owns the intent, and their examples outrank the
+        model's self-written tests.
+
+        Recognized forms (conservative - both sides must parse as Python
+        literals): `name(1, 2) -> 3`, `name([1,2]) == [2,1]`,
+        `name("x") should return "y"`, plus literal `assert ...` lines.
+        The example's function name is rewritten to the generated function's
+        actual name when there is exactly one top-level def.
+        """
+        import ast as _ast
+        extra = []
+        # explicit assert lines pass through if they compile
+        for line in re.findall(r'^\s*(assert .+)$', prompt, re.M):
+            try:
+                _ast.parse(line.strip())
+                extra.append(line.strip())
+            except Exception:
+                pass
+        # call -> expected forms
+        try:
+            defs = [n.name for n in _ast.parse(code).body
+                    if isinstance(n, _ast.FunctionDef)]
+        except Exception:
+            defs = []
+        target = defs[0] if len(defs) == 1 else None
+        for m in re.finditer(
+                r'(\w+)\s*\(([^()]*)\)\s*(?:->|=>|==|should (?:return|give|'
+                r'equal)|returns)\s*(\[[^\]]*\]|\([^)]*\)|"[^"]*"|\'[^\']*\'|'
+                r'-?[\d.]+|True|False|None)', prompt):
+            fname, args, expected = m.group(1), m.group(2), m.group(3)
+            try:
+                _ast.literal_eval(f'({args},)') if args.strip() else None
+                _ast.literal_eval(expected)
+            except Exception:
+                continue
+            call_name = target or fname
+            extra.append(f'assert {call_name}({args}) == {expected}')
+        return '\n'.join(dict.fromkeys(extra))  # dedupe, keep order
+
     def generate(self, prompt: str, **kwargs) -> Optional[str]:
         """Generate code, then EXECUTE it to verify before answering."""
         logger.info(f"CodeNode generate called with prompt: {prompt[:100]}...")
@@ -230,7 +272,17 @@ class CodeNode(FluxNode):
                 return raw  # no code block found; return the text as-is
             code = _trim_to_compilable(code)
 
-            ok, err = _verify_code(code)
+            # USER EXAMPLES AS THE SPEC: examples given in the request become
+            # executable tests appended to verification - the user's intent
+            # outranks the model's self-written asserts.
+            user_tests = self._user_example_asserts(prompt, code)
+            if user_tests:
+                logger.info(f"User examples -> executable tests:\n{user_tests}")
+
+            def _verify_with_examples(c):
+                return _verify_code(c + ('\n' + user_tests if user_tests else ''))
+
+            ok, err = _verify_with_examples(code)
             if not ok:
                 logger.info(f"Generated code failed verification ({err}); retrying once")
                 retry_prompt = self._format_prompt(prompt, history) + (
@@ -242,7 +294,7 @@ class CodeNode(FluxNode):
                 code2 = _extract_code(raw2)
                 if code2:
                     code2 = _trim_to_compilable(code2)
-                    ok2, err2 = _verify_code(code2)
+                    ok2, err2 = _verify_with_examples(code2)
                     if ok2:
                         code, ok, err = code2, True, ""
                     else:
@@ -251,7 +303,13 @@ class CodeNode(FluxNode):
             if ok:
                 # Honest labels: passing self-generated asserts is stronger
                 # evidence than merely executing, and the label says which.
-                if 'assert' in code:
+                if user_tests:
+                    logger.info("Code verified: passed the USER'S example tests")
+                    label = ("Verified against YOUR examples: the code was "
+                             "executed and passed these tests derived from "
+                             "your request:\n```python\n" + user_tests +
+                             "\n```")
+                elif 'assert' in code:
                     logger.info("Code verified: ran and passed its self-tests")
                     label = ("Verified: the code was executed and passed the "
                              "assert tests shown above. (These are "

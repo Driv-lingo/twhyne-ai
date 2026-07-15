@@ -268,6 +268,435 @@ assert inorder(None) == []
 assert inorder(TreeNode(5)) == [5]
 ''',
     },
+    {
+        "name": "Merge sort",
+        "require": [("merge sort", "mergesort")],
+        "code": '''def merge_sort(items):
+    """Sorted copy of items. Stable, O(n log n) worst case."""
+    if len(items) <= 1:
+        return list(items)
+    mid = len(items) // 2
+    left, right = merge_sort(items[:mid]), merge_sort(items[mid:])
+    out, i, j = [], 0, 0
+    while i < len(left) and j < len(right):
+        if left[i] <= right[j]:
+            out.append(left[i]); i += 1
+        else:
+            out.append(right[j]); j += 1
+    return out + left[i:] + right[j:]
+
+assert merge_sort([5, 2, 8, 1, 9]) == [1, 2, 5, 8, 9]
+assert merge_sort([]) == []
+assert merge_sort([1, 1, 1]) == [1, 1, 1]
+''',
+    },
+    {
+        "name": "Bubble sort",
+        "require": [("bubble sort", "bubblesort")],
+        "code": '''def bubble_sort(items):
+    """Sorted copy via bubble sort (educational; O(n^2))."""
+    a = list(items)
+    n = len(a)
+    for i in range(n):
+        swapped = False
+        for j in range(n - 1 - i):
+            if a[j] > a[j + 1]:
+                a[j], a[j + 1] = a[j + 1], a[j]
+                swapped = True
+        if not swapped:
+            break
+    return a
+
+assert bubble_sort([3, 1, 2]) == [1, 2, 3]
+assert bubble_sort([]) == []
+assert bubble_sort([2, 2, 1]) == [1, 2, 2]
+''',
+    },
+    {
+        "name": "Stack (LIFO)",
+        "require": [("stack",), ("implement", "class", "create", "build", "write")],
+        "code": '''class Stack:
+    """LIFO stack with push, pop, peek, is_empty, len."""
+    def __init__(self):
+        self._items = []
+    def push(self, item):
+        self._items.append(item)
+    def pop(self):
+        if not self._items:
+            raise IndexError("pop from empty stack")
+        return self._items.pop()
+    def peek(self):
+        if not self._items:
+            raise IndexError("peek at empty stack")
+        return self._items[-1]
+    def is_empty(self):
+        return not self._items
+    def __len__(self):
+        return len(self._items)
+
+_s = Stack()
+_s.push(1); _s.push(2)
+assert _s.peek() == 2 and len(_s) == 2
+assert _s.pop() == 2 and _s.pop() == 1
+assert _s.is_empty()
+''',
+    },
+    {
+        "name": "Queue (FIFO)",
+        "require": [("queue",), ("implement", "class", "create", "build", "write")],
+        "code": '''from collections import deque
+
+class Queue:
+    """FIFO queue with enqueue, dequeue, is_empty, len. O(1) both ends."""
+    def __init__(self):
+        self._items = deque()
+    def enqueue(self, item):
+        self._items.append(item)
+    def dequeue(self):
+        if not self._items:
+            raise IndexError("dequeue from empty queue")
+        return self._items.popleft()
+    def is_empty(self):
+        return not self._items
+    def __len__(self):
+        return len(self._items)
+
+_q = Queue()
+_q.enqueue('a'); _q.enqueue('b')
+assert _q.dequeue() == 'a'
+assert len(_q) == 1
+assert not _q.is_empty()
+''',
+    },
+    {
+        "name": "Binary search tree",
+        "require": [("binary search tree", "bst")],
+        "code": '''class BSTNode:
+    def __init__(self, val):
+        self.val = val
+        self.left = None
+        self.right = None
+
+def bst_insert(root, val):
+    """Insert val; returns the (possibly new) root."""
+    if root is None:
+        return BSTNode(val)
+    if val < root.val:
+        root.left = bst_insert(root.left, val)
+    else:
+        root.right = bst_insert(root.right, val)
+    return root
+
+def bst_contains(root, val):
+    while root:
+        if val == root.val:
+            return True
+        root = root.left if val < root.val else root.right
+    return False
+
+_r = None
+for _v in [5, 3, 8, 1]:
+    _r = bst_insert(_r, _v)
+assert bst_contains(_r, 3)
+assert not bst_contains(_r, 7)
+assert bst_contains(_r, 5)
+''',
+    },
+    {
+        "name": "Breadth-first search (graph)",
+        "require": [("bfs", "breadth-first", "breadth first")],
+        "code": '''from collections import deque
+
+def bfs(graph, start):
+    """Visit order from start over an adjacency-dict graph."""
+    seen = {start}
+    order = []
+    q = deque([start])
+    while q:
+        node = q.popleft()
+        order.append(node)
+        for nxt in graph.get(node, []):
+            if nxt not in seen:
+                seen.add(nxt)
+                q.append(nxt)
+    return order
+
+_g = {'a': ['b', 'c'], 'b': ['d'], 'c': ['d'], 'd': []}
+assert bfs(_g, 'a') == ['a', 'b', 'c', 'd']
+assert bfs(_g, 'd') == ['d']
+assert bfs({}, 'x') == ['x']
+''',
+    },
+    {
+        "name": "Count word frequency",
+        "require": [("word", "words"), ("count", "frequency", "frequencies", "occurrence")],
+        "code": '''def word_frequency(text):
+    """Case-insensitive word counts (letters/digits/apostrophes)."""
+    import re
+    counts = {}
+    for w in re.findall(r"[A-Za-z0-9']+", text.lower()):
+        counts[w] = counts.get(w, 0) + 1
+    return counts
+
+assert word_frequency("the cat and the hat") == {"the": 2, "cat": 1, "and": 1, "hat": 1}
+assert word_frequency("") == {}
+assert word_frequency("A a A") == {"a": 3}
+''',
+    },
+    {
+        "name": "Anagram check",
+        "require": [("anagram",)],
+        "code": '''def is_anagram(a, b):
+    """True if a and b are anagrams (case-insensitive, ignores spaces)."""
+    norm = lambda s: sorted(c for c in s.lower() if not c.isspace())
+    return norm(a) == norm(b)
+
+assert is_anagram("listen", "silent")
+assert not is_anagram("hello", "world")
+assert is_anagram("Dormitory", "dirty room")
+''',
+    },
+    {
+        "name": "Character frequency",
+        "require": [("character", "letter", "char"), ("count", "frequency", "occurrence")],
+        "code": '''def char_frequency(s):
+    """Counts of each character in s."""
+    counts = {}
+    for c in s:
+        counts[c] = counts.get(c, 0) + 1
+    return counts
+
+assert char_frequency("aab") == {"a": 2, "b": 1}
+assert char_frequency("") == {}
+assert char_frequency("zz z")[" "] == 1
+''',
+    },
+    {
+        "name": "Flatten a nested list",
+        "require": [("flatten",), ("list", "lists", "array", "nested")],
+        "code": '''def flatten(nested):
+    """Flatten arbitrarily nested lists/tuples into one flat list."""
+    out = []
+    for item in nested:
+        if isinstance(item, (list, tuple)):
+            out.extend(flatten(item))
+        else:
+            out.append(item)
+    return out
+
+assert flatten([1, [2, [3, 4]], 5]) == [1, 2, 3, 4, 5]
+assert flatten([]) == []
+assert flatten([[], [1], ((2,),)]) == [1, 2]
+''',
+    },
+    {
+        "name": "Chunk a list",
+        "require": [("chunk", "split", "batch"), ("list", "array"), ("size", "chunks", "groups", "pieces", "batches")],
+        "code": '''def chunk_list(items, size):
+    """Split items into consecutive chunks of at most `size`."""
+    if size < 1:
+        raise ValueError("size must be >= 1")
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+assert chunk_list([1, 2, 3, 4, 5], 2) == [[1, 2], [3, 4], [5]]
+assert chunk_list([], 3) == []
+assert chunk_list([1], 5) == [[1]]
+''',
+    },
+    {
+        "name": "Merge two dictionaries",
+        "require": [("merge", "combine"), ("dict", "dictionaries", "dictionary")],
+        "code": '''def merge_dicts(a, b):
+    """New dict with b's entries overriding a's on key conflicts."""
+    out = dict(a)
+    out.update(b)
+    return out
+
+assert merge_dicts({"x": 1}, {"y": 2}) == {"x": 1, "y": 2}
+assert merge_dicts({"x": 1}, {"x": 9}) == {"x": 9}
+assert merge_dicts({}, {}) == {}
+''',
+    },
+    {
+        "name": "Balanced parentheses",
+        "require": [("balanced", "valid", "matching"), ("parenthes", "bracket", "brace")],
+        "code": '''def is_balanced(s):
+    """True if every ( [ { closes correctly."""
+    pairs = {')': '(', ']': '[', '}': '{'}
+    stack = []
+    for c in s:
+        if c in '([{':
+            stack.append(c)
+        elif c in pairs:
+            if not stack or stack.pop() != pairs[c]:
+                return False
+    return not stack
+
+assert is_balanced("({[]})")
+assert not is_balanced("(]")
+assert is_balanced("")
+''',
+    },
+    {
+        "name": "Longest common prefix",
+        "require": [("longest common prefix",)],
+        "code": '''def longest_common_prefix(strings):
+    """Longest prefix shared by every string ('' if none)."""
+    if not strings:
+        return ""
+    shortest = min(strings, key=len)
+    for i, c in enumerate(shortest):
+        if any(s[i] != c for s in strings):
+            return shortest[:i]
+    return shortest
+
+assert longest_common_prefix(["flower", "flow", "flight"]) == "fl"
+assert longest_common_prefix(["dog", "racecar"]) == ""
+assert longest_common_prefix(["same", "same"]) == "same"
+''',
+    },
+    {
+        "name": "Second largest element",
+        "require": [("second", "2nd"), ("largest", "biggest", "highest", "max")],
+        "code": '''def second_largest(nums):
+    """Second largest DISTINCT value, or None if it doesn't exist."""
+    distinct = set(nums)
+    if len(distinct) < 2:
+        return None
+    distinct.discard(max(distinct))
+    return max(distinct)
+
+assert second_largest([4, 1, 7, 7, 3]) == 4
+assert second_largest([5]) is None
+assert second_largest([2, 2, 2]) is None
+''',
+    },
+    {
+        "name": "Find the missing number",
+        "require": [("missing",), ("number", "integer", "element")],
+        "code": '''def missing_number(nums, n):
+    """The one missing value from 0..n given the other n values. O(n)."""
+    return n * (n + 1) // 2 - sum(nums)
+
+assert missing_number([0, 1, 3], 3) == 2
+assert missing_number([1, 2, 3], 3) == 0
+assert missing_number([0], 1) == 1
+''',
+    },
+    {
+        "name": "Matrix transpose",
+        "require": [("transpose",)],
+        "code": '''def transpose(matrix):
+    """Transpose a rectangular matrix (list of rows)."""
+    return [list(col) for col in zip(*matrix)]
+
+assert transpose([[1, 2], [3, 4]]) == [[1, 3], [2, 4]]
+assert transpose([[1, 2, 3]]) == [[1], [2], [3]]
+assert transpose([]) == []
+''',
+    },
+    {
+        "name": "Caesar cipher",
+        "require": [("caesar",)],
+        "code": '''def caesar(text, shift):
+    """Caesar-shift letters (positive = right); other chars unchanged."""
+    out = []
+    for c in text:
+        if c.isalpha():
+            base = ord('A') if c.isupper() else ord('a')
+            out.append(chr((ord(c) - base + shift) % 26 + base))
+        else:
+            out.append(c)
+    return ''.join(out)
+
+assert caesar("abc", 1) == "bcd"
+assert caesar("XYZ", 3) == "ABC"
+assert caesar(caesar("Hello, World!", 5), -5) == "Hello, World!"
+''',
+    },
+    {
+        "name": "Roman numerals",
+        "require": [("roman",)],
+        "code": '''def to_roman(n):
+    """Integer (1-3999) to Roman numerals."""
+    if not 1 <= n <= 3999:
+        raise ValueError("1..3999 only")
+    vals = [(1000, 'M'), (900, 'CM'), (500, 'D'), (400, 'CD'), (100, 'C'),
+            (90, 'XC'), (50, 'L'), (40, 'XL'), (10, 'X'), (9, 'IX'),
+            (5, 'V'), (4, 'IV'), (1, 'I')]
+    out = []
+    for v, sym in vals:
+        while n >= v:
+            out.append(sym)
+            n -= v
+    return ''.join(out)
+
+assert to_roman(1994) == "MCMXCIV"
+assert to_roman(4) == "IV"
+assert to_roman(3999) == "MMMCMXCIX"
+''',
+    },
+    {
+        "name": "Temperature conversion",
+        "require": [("celsius", "fahrenheit", "temperature")],
+        "code": '''def c_to_f(celsius):
+    """Celsius to Fahrenheit."""
+    return celsius * 9 / 5 + 32
+
+def f_to_c(fahrenheit):
+    """Fahrenheit to Celsius."""
+    return (fahrenheit - 32) * 5 / 9
+
+assert c_to_f(0) == 32
+assert c_to_f(100) == 212
+assert abs(f_to_c(98.6) - 37) < 1e-9
+''',
+    },
+    {
+        "name": "Leap year check",
+        "require": [("leap year", "leap-year")],
+        "code": '''def is_leap_year(year):
+    """Gregorian leap-year rule."""
+    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
+assert is_leap_year(2024)
+assert not is_leap_year(1900)
+assert is_leap_year(2000)
+''',
+    },
+    {
+        "name": "Sort a dictionary by value",
+        "require": [("sort",), ("dict", "dictionary"), ("value", "values")],
+        "code": '''def sort_dict_by_value(d, reverse=False):
+    """List of (key, value) pairs sorted by value."""
+    return sorted(d.items(), key=lambda kv: kv[1], reverse=reverse)
+
+assert sort_dict_by_value({"a": 3, "b": 1, "c": 2}) == [("b", 1), ("c", 2), ("a", 3)]
+assert sort_dict_by_value({}, reverse=True) == []
+assert sort_dict_by_value({"x": 5, "y": 5})[0][1] == 5
+''',
+    },
+    {
+        "name": "Merge overlapping intervals",
+        "require": [("interval", "intervals"), ("merge", "overlap", "overlapping")],
+        "code": '''def merge_intervals(intervals):
+    """Merge overlapping [start, end] intervals; returns sorted merged list."""
+    if not intervals:
+        return []
+    ivs = sorted(intervals)
+    out = [list(ivs[0])]
+    for start, end in ivs[1:]:
+        if start <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], end)
+        else:
+            out.append([start, end])
+    return out
+
+assert merge_intervals([[1, 3], [2, 6], [8, 10]]) == [[1, 6], [8, 10]]
+assert merge_intervals([]) == []
+assert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]
+''',
+    },
 ]
 
 
