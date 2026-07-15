@@ -1834,11 +1834,18 @@ def create_app():
             # document. The right context for an overview question is the
             # document itself, in order, under the same permission boundary.
             overview_mode = False
+            # "tell me about X" / "describe X" where X resolved to a KB is an
+            # overview request by nature - it takes the overview path even
+            # when retrieval scraped up a weak chunk (one thin chunk is not
+            # an 'about' answer). Specific factual questions ("in X, what is
+            # the budget?") keep normal retrieval.
             _about_named = bool(named_ds) and bool(re.search(
-                r"\b(tell me about|about|describe|what.*(happen|contain|in))\b",
+                r"\b(tell me about|describe|what is|overview)\b",
                 prompt or '', re.I))
-            if ((_SUMMARIZE_RE.search(prompt or '') or _about_named)
-                    and (not should_ground or top_score < thr)):
+            if (_about_named
+                    or (_SUMMARIZE_RE.search(prompt or '')
+                        and (not should_ground or top_score < thr
+                             or bool(named_ds)))):
                 # CLARIFY, don't guess: an overview question with several
                 # knowledge bases loaded and none named is ambiguous - ask
                 # which one, by name, instead of summarizing a random one.

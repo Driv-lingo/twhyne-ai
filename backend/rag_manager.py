@@ -437,16 +437,34 @@ class SemanticRAGManager:
     def match_dataset(self, prompt: str) -> Optional[str]:
         """Resolve a knowledge base the user named in plain language -
         "tell me about 'twhyne'", "in the handbook database, what..." -
-        to its dataset id. Longest name match wins; None if nothing matches.
+        to its dataset id. TOKEN-based: a KB named "Twhyne Docs" or
+        "twhyne_overview.pdf" must match "tell me about twhyne" (exact
+        whole-name matching silently failed on any decorated name, and the
+        question then fell through to the ungrounded language model, which
+        improvises from the name - the worst possible failure).
+        None if nothing matches; best token coverage wins.
         """
-        p = (prompt or "").lower()
-        best, best_len = None, 0
+        pset = set(re.findall(r'[a-z0-9]+', (prompt or "").lower()))
+        generic = {'the', 'and', 'for', 'doc', 'docs', 'file', 'files',
+                   'data', 'notes', 'new', 'test', 'pdf', 'txt', 'base',
+                   'database', 'knowledge'}
+        best, best_score = None, 0.0
         for did, info in self.datasets.items():
-            name = str(info.get("name") or "").lower().strip()
-            base = re.sub(r'\.(pdf|txt|md|csv|json)$', '', name)
-            for cand in {name, base}:
-                if len(cand) >= 3 and cand in p and len(cand) > best_len:
-                    best, best_len = did, len(cand)
+            toks = [t for t in re.findall(
+                r'[a-z0-9]+', str(info.get("name") or "").lower())
+                if len(t) >= 3 and t not in generic]
+            if not toks:
+                continue
+            hits = [t for t in toks if t in pset]
+            if not hits:
+                continue
+            # A single-token hit must be distinctive (>=4 chars) so a KB
+            # named "hr" or "log" can't be summoned by every sentence.
+            if len(hits) == 1 and len(hits[0]) < 4:
+                continue
+            score = len(hits) / len(toks)
+            if score > best_score:
+                best, best_score = did, score
         return best
 
     def delete_dataset(self, dataset_id: str) -> bool:
