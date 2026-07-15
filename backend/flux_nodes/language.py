@@ -51,6 +51,8 @@ class LanguageNode(FluxNode):
             model = get_shared_model(self.model_path)
 
             formatted_prompt = self._format_prompt(prompt, conversation_history)
+            import time as _t
+            _t0 = _t.time()
             response = model(
                 formatted_prompt,
                 # 900-token ceiling (was 320, which truncated list-style
@@ -70,6 +72,16 @@ class LanguageNode(FluxNode):
                 repeat_penalty=1.0,
                 stop=["</s>", "\nQuestion:", "\n[Question", "\nQ:"], echo=False,
             )
+            # Perf transparency: log tokens/sec so slowness is diagnosable
+            # from the launcher window (thread misconfig, paging, contention).
+            try:
+                dt = _t.time() - _t0
+                toks = (response.get('usage') or {}).get('completion_tokens', 0)
+                if dt > 0:
+                    logger.info(f"Language generation: {toks} tokens in "
+                                f"{dt:.0f}s ({toks/dt:.1f} tok/s)")
+            except Exception:
+                pass
             return response['choices'][0]['text'].strip()
         except Exception as e:
             logger.error(f"Error generating response: {e}")

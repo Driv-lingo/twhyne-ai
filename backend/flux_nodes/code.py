@@ -163,6 +163,8 @@ class CodeNode(FluxNode):
         return prompt_text
 
     def _generate_once(self, model, prompt_text: str) -> str:
+        import time as _t
+        _t0 = _t.time()
         # Stop sequences keep the model from rambling into invented follow-up
         # exercises after it has answered (observed in benchmark output).
         # 768 not 512: class-based answers (linked list, tree) plus their
@@ -180,6 +182,15 @@ class CodeNode(FluxNode):
                   "You are a helpful coding assistant"],
             echo=False,
         )
+        # Perf transparency: every generation logs tokens/sec so "why is it
+        # slow" is answerable from the launcher window, not guesswork.
+        try:
+            dt = _t.time() - _t0
+            toks = (response.get('usage') or {}).get('completion_tokens', 0)
+            logger.info(f"Code generation: {toks} tokens in {dt:.0f}s "
+                        f"({toks/dt:.1f} tok/s)" if dt > 0 else "")
+        except Exception:
+            pass
         return response['choices'][0]['text'].strip()
 
     def generate(self, prompt: str, **kwargs) -> Optional[str]:

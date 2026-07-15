@@ -66,9 +66,15 @@ def _fast_local_copy(path: str):
 
 
 def _physical_cores():
-    """Physical core count. Hyperthreads HURT memory-bandwidth-bound
-    inference (two threads fighting over one core's bandwidth), so the
-    default of 'all logical cores minus one' was oversubscribing."""
+    """Physical core count for n_threads. Hyperthreads HURT memory-
+    bandwidth-bound inference, so all-logical-cores oversubscribed - but
+    /proc/cpuinfo inside a VM (Docker Desktop/WSL2) can report every CPU
+    as the same core, which would pin generation to 1-2 threads and make
+    it several times SLOWER. Trust the topology only when it is plausible;
+    never go below half the logical cores.
+    """
+    logical = os.cpu_count() or 4
+    floor = max(2, logical // 2)
     try:
         pairs = set()
         cur = {}
@@ -81,10 +87,10 @@ def _physical_cores():
                 elif not line.strip():
                     cur = {}
         if pairs:
-            return len(pairs)
+            return max(len(pairs), floor)
     except Exception:
         pass
-    return max(1, (os.cpu_count() or 4) // 2)
+    return floor
 
 
 def get_shared_model(model_path, **overrides):
