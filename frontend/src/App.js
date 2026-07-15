@@ -723,21 +723,6 @@ function App() {
     setProcessingNode(null);
   };
   
-  // Logo click = fresh start (the ChatGPT/Claude convention): cancel
-  // anything in flight, clear the chat, back to the empty state. Knowledge
-  // bases, timers and settings are untouched - they live server-side.
-  const handleNewConversation = () => {
-    if (isLoading) handleCancel();
-    setHistory([]);
-    setResponse('');
-    setQuery('');
-    setFile(null);
-    setProcessingNode(null);
-    setCurrentConversation(null);
-    setFeedbackSent(false);
-    queryInputRef.current?.focus();
-  };
-
   // Handle clear history
   const handleClearHistory = () => {
     if (isLoading) return;
@@ -756,11 +741,20 @@ function App() {
     setProcessingNode(null);
   };
   
+  // Fresh start (the ChatGPT/Claude convention, wired to the logo): cancel
+  // anything in flight, clear the chat back to the empty state, focus the
+  // input. Knowledge bases, timers and settings are untouched - they live
+  // server-side.
   const handleNewConversation = () => {
+    if (isLoading) handleCancel();
     setHistory([]);
     setResponse('');
+    setQuery('');
+    setFile(null);
     setProcessingNode(null);
     setCurrentConversation(null);
+    setFeedbackSent(false);
+    queryInputRef.current?.focus();
   };
   
   const handleDeleteConversation = (id) => {
