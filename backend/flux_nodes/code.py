@@ -196,6 +196,27 @@ class CodeNode(FluxNode):
     def generate(self, prompt: str, **kwargs) -> Optional[str]:
         """Generate code, then EXECUTE it to verify before answering."""
         logger.info(f"CodeNode generate called with prompt: {prompt[:100]}...")
+        # LIBRARY FIRST (the SymPy trick applied to code): for the classic
+        # requests, authoring is unnecessary - a canonical implementation is
+        # EXECUTED with its tests right now (milliseconds) and shipped with
+        # an honest label. Only novel requests pay the 7B authoring cost.
+        try:
+            from .code_library import match as _lib_match
+            hit = _lib_match(prompt)
+            if hit:
+                ok, err = _verify_code(hit["code"])
+                if ok:
+                    logger.info(f"Code library hit: '{hit['name']}' "
+                                f"(executed + tests passed, no generation)")
+                    return (f"```python\n{hit['code'].rstrip()}\n```\n\n"
+                            f"Verified: this is Twhyne's canonical "
+                            f"implementation of \"{hit['name']}\" — it was "
+                            f"executed just now and passed the assert tests "
+                            f"shown above.")
+                logger.warning(f"Library snippet '{hit['name']}' failed "
+                               f"execution ({err}); falling back to model")
+        except Exception as e:
+            logger.warning(f"Code library lookup failed: {e}")
         try:
             # Fetch from the SHARED single-resident cache at call time (the
             # cache evicts the other model first, so two 7Bs never coexist).
