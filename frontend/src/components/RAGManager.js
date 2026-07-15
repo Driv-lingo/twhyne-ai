@@ -31,6 +31,13 @@ const RAGManager = ({ onNodeCreated }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [ragStatus, setRagStatus] = useState(null);
   const [ingestProgress, setIngestProgress] = useState('');
+  const [sources, setSources] = useState([]);
+
+  useEffect(() => {
+    if (selectedDataset) loadSources(selectedDataset.id);
+    else setSources([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDataset]);
 
   useEffect(() => {
     if (showManager) {
@@ -81,37 +88,30 @@ const RAGManager = ({ onNodeCreated }) => {
     }
   };
 
-  const handleFileUpload = (event) => {
-    const files = Array.from(event.target.files);
-    const readers = [];
-
-    files.forEach(file => {
+  const readFiles = (files) => Promise.all(files.map(file =>
+    new Promise((resolve) => {
       const reader = new FileReader();
-      readers.push(
-        new Promise((resolve) => {
-          reader.onload = (e) => {
-            const content = e.target.result;
-            const isBase64 = file.type === 'application/pdf';
-            
-            resolve({
-              filename: file.name,
-              type: getFileType(file.name),
-              content: isBase64 ? btoa(content) : content,
-              encoding: isBase64 ? 'base64' : 'utf-8',
-              size: file.size
-            });
-          };
+      reader.onload = (e) => {
+        const content = e.target.result;
+        const isBase64 = file.type === 'application/pdf';
+        resolve({
+          filename: file.name,
+          type: getFileType(file.name),
+          content: isBase64 ? btoa(content) : content,
+          encoding: isBase64 ? 'base64' : 'utf-8',
+          size: file.size
+        });
+      };
+      if (file.type === 'application/pdf') {
+        reader.readAsBinaryString(file);
+      } else {
+        reader.readAsText(file);
+      }
+    })
+  ));
 
-          if (file.type === 'application/pdf') {
-            reader.readAsBinaryString(file);
-          } else {
-            reader.readAsText(file);
-          }
-        })
-      );
-    });
-
-    Promise.all(readers).then(fileData => {
+  const handleFileUpload = (event) => {
+    readFiles(Array.from(event.target.files)).then(fileData => {
       setUploadedFiles(prev => [...prev, ...fileData]);
     });
   };
@@ -191,6 +191,48 @@ const RAGManager = ({ onNodeCreated }) => {
         ? (error.response.data?.error || `server error ${error.response.status}`)
         : 'backend unreachable — is Twhyne still running? Restart the launcher and try again';
       alert('Could not delete the knowledge base: ' + why);
+    }
+  };
+
+  const loadSources = async (datasetId) => {
+    try {
+      const r = await axios.get(`http://127.0.0.1:5002/api/rag/datasets/${datasetId}/sources`);
+      setSources(r.data.sources || []);
+    } catch (e) { setSources([]); }
+  };
+
+  const addFilesToDataset = async (event) => {
+    const files = Array.from(event.target.files);
+    event.target.value = '';
+    if (!files.length || !selectedDataset) return;
+    setIsLoading(true);
+    try {
+      const fileData = await readFiles(files);
+      const r = await axios.post(
+        `http://127.0.0.1:5002/api/rag/datasets/${selectedDataset.id}/files`,
+        { files: fileData });
+      alert(r.data.added_chunks
+        ? `Added ${r.data.added_chunks} sections to "${selectedDataset.name}".`
+        : 'No text could be extracted from the added file(s) — nothing was indexed.');
+      loadSources(selectedDataset.id);
+      loadDatasets();
+    } catch (error) {
+      alert('Could not add files: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const removeSource = async (source) => {
+    if (!selectedDataset) return;
+    if (!window.confirm(`Remove "${source}" and all its sections from this knowledge base?`)) return;
+    try {
+      await axios.delete(
+        `http://127.0.0.1:5002/api/rag/datasets/${selectedDataset.id}/sources/${encodeURIComponent(source)}`);
+      loadSources(selectedDataset.id);
+      loadDatasets();
+    } catch (error) {
+      alert('Could not remove the file: ' + (error.response?.data?.error || error.message));
     }
   };
 
@@ -427,6 +469,29 @@ const RAGManager = ({ onNodeCreated }) => {
                   {selectedDataset.description}
                 </div>
               )}
+
+              <div className="sources-section">
+                <h5>Files in this knowledge base</h5>
+                {sources.length === 0 ? (
+                  <p className="hint" style={{fontSize: 12, opacity: 0.75}}>No files indexed.</p>
+                ) : (
+                  sources.map((s) => (
+                    <div key={s.source} className="source-row" style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'6px 0'}}>
+                      <span style={{fontSize: 13}}>{s.source} <span style={{opacity:0.6}}>({s.chunks} sections)</span></span>
+                      <button onClick={() => removeSource(s.source)} title="Remove this file" style={{background:'none', border:'none', cursor:'pointer'}}>
+                        <FaTimes />
+                      </button>
+                    </div>
+                  ))
+                )}
+                <div style={{marginTop: 10}}>
+                  <input type="file" id="add-files-input" multiple style={{display:'none'}} onChange={addFilesToDataset} />
+                  <button className="secondary-btn" disabled={isLoading}
+                          onClick={() => document.getElementById('add-files-input').click()}>
+                    <FaPlus /> {isLoading ? (ingestProgress || 'Indexing…') : 'Add files'}
+                  </button>
+                </div>
+              </div>
 
               <div className="search-section">
                 <h5>Search Knowledge Base</h5>

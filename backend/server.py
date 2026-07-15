@@ -1427,7 +1427,9 @@ def create_app():
                 # One tamper-evident audit record per answered query.
                 resp_low = (data.get('response') or '').lower() if isinstance(
                     data.get('response'), str) else ''
-                verdict = ('refused' if resp_low
+                verdict = ('clarify' if resp_low
+                           and 'which one should i summarize' in resp_low
+                           else 'refused' if resp_low
                            and ('do not have' in resp_low
                                 or 'not in the' in resp_low
                                 or 'not authorized' in resp_low
@@ -1466,6 +1468,9 @@ def create_app():
                 how = ('computed' if node.startswith('math') else
                        'extracted' if data.get('extractive') else
                        'cited' if data.get('grounded') else
+                       # an unverified draft was NOT execution-verified; its
+                       # chip must say generated, not executed
+                       'generated' if 'unverified draft' in resp_low else
                        'executed' if node.startswith(('code', 'verified')) else
                        'generated')
                 gates = {
@@ -1728,6 +1733,19 @@ def create_app():
             # the code model, not get grounded against whatever documents
             # happen to be loaded.
             dataset_id = data.get('dataset_id')
+            # ASK BY NAME: "tell me about 'twhyne'", "in the handbook
+            # database, what changed" - a knowledge base named in plain
+            # language scopes the question to that dataset, exactly as if it
+            # had been selected in the UI.
+            named_ds = None
+            if not dataset_id:
+                try:
+                    named_ds = get_rag_manager().match_dataset(prompt)
+                except Exception:
+                    named_ds = None
+                if named_ds:
+                    dataset_id = named_ds
+                    logger.info(f"Dataset named in prompt -> {named_ds}")
             forced = bool(data.get('use_rag')) or bool(dataset_id)
             if not forced:
                 specialist = _route_query(prompt, node_registry)
@@ -1816,8 +1834,31 @@ def create_app():
             # document. The right context for an overview question is the
             # document itself, in order, under the same permission boundary.
             overview_mode = False
-            if (_SUMMARIZE_RE.search(prompt or '')
+            _about_named = bool(named_ds) and bool(re.search(
+                r"\b(tell me about|about|describe|what.*(happen|contain|in))\b",
+                prompt or '', re.I))
+            if ((_SUMMARIZE_RE.search(prompt or '') or _about_named)
                     and (not should_ground or top_score < thr)):
+                # CLARIFY, don't guess: an overview question with several
+                # knowledge bases loaded and none named is ambiguous - ask
+                # which one, by name, instead of summarizing a random one.
+                if not dataset_id:
+                    all_ds = get_rag_manager().list_datasets()
+                    if len(all_ds) > 1:
+                        names = ', '.join(f"\"{d['name']}\"" for d in all_ds[:8])
+                        text = (f"You have {len(all_ds)} knowledge bases: "
+                                f"{names}. Which one should I summarize? "
+                                f"Name it in your question - e.g. 'key "
+                                f"points of {all_ds[0]['name']}'.")
+                        return jsonify({'result': text, 'response': text,
+                                        'node_id': 'orchestrator',
+                                        'sources': [], 'grounded': False,
+                                        'role': role,
+                                        'gates': {'verdict': 'clarify',
+                                                  'verdict_reason':
+                                                  'ambiguous target: multiple '
+                                                  'knowledge bases, none '
+                                                  'named'}})
                 ds_name, ov = get_rag_manager().overview_chunks(
                     dataset_id, role, max_chunks=10)
                 if ov:
@@ -1877,6 +1918,19 @@ def create_app():
                            f"this role's permissions.")
                 else:
                     msg = "I don't have that in my provided sources."
+                    # Clarify instead of dead-ending: say what IS loaded and
+                    # ask how to proceed.
+                    try:
+                        all_ds = get_rag_manager().list_datasets()
+                    except Exception:
+                        all_ds = []
+                    if all_ds:
+                        names = ', '.join(f"\"{d['name']}\"" for d in all_ds[:8])
+                        msg += (f" I searched: {names}. If the answer should "
+                                f"be in one of those, try naming the document "
+                                f"and rephrasing with the terms it uses; "
+                                f"otherwise add the right file to a "
+                                f"knowledge base and ask again.")
                 return jsonify({'result': msg, 'response': msg,
                                 'node_id': 'language-mistral-7b', 'sources': [],
                                 'denied_sources': len(denied)})
@@ -2597,6 +2651,42 @@ def create_app():
             return jsonify({'success': True, 'dataset': ds})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/rag/datasets/<dataset_id>/files', methods=['POST'])
+    def add_dataset_files(dataset_id):
+        """Append files to an existing knowledge base (they're editable)."""
+        try:
+            files = (request.get_json(silent=True) or {}).get('files') or []
+            if not files:
+                return jsonify({'error': 'files required'}), 400
+            _set_progress('indexing', 'adding files')
+            try:
+                res = get_rag_manager().add_files(
+                    dataset_id, files,
+                    progress=lambda d, t: _set_progress(
+                        'indexing', f'adding files — section {d}/{t}'))
+            finally:
+                _set_progress('idle')
+            if res is None:
+                return jsonify({'error': 'Dataset not found'}), 404
+            return jsonify({'success': True, **res})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/rag/datasets/<dataset_id>/sources', methods=['GET'])
+    def list_dataset_sources(dataset_id):
+        return jsonify({'sources': get_rag_manager().dataset_sources(dataset_id)})
+
+    @app.route('/api/rag/datasets/<dataset_id>/sources/<path:source>',
+               methods=['DELETE'])
+    def remove_dataset_source(dataset_id, source):
+        removed = get_rag_manager().remove_source(dataset_id, source)
+        if removed is None:
+            return jsonify({'error': 'Dataset not found'}), 404
+        if removed == 0:
+            return jsonify({'error': f'No source named "{source}" in this '
+                                     f'knowledge base'}), 404
+        return jsonify({'success': True, 'removed_chunks': removed})
 
     @app.route('/api/rag/datasets/<dataset_id>', methods=['DELETE'])
     def delete_dataset(dataset_id):

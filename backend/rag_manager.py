@@ -11,6 +11,7 @@ import json
 import logging
 import math
 import os
+import re
 import threading
 import uuid
 from pathlib import Path
@@ -133,11 +134,14 @@ _DEFAULT_PERMISSIONS = {
     "restricted_default_roles": ["admin"],
     "default_allowed": True,
     # VERIFICATION POLICY: what ships when a verifier says no.
-    #   on_code_failure: "refuse" (default) - broken code never leaves;
-    #                    "draft"  - ship the best candidate labeled
-    #                               UNVERIFIED with the real error.
-    # The label is never optional; the knob only picks refusal vs draft.
-    "verification": {"on_code_failure": "refuse"},
+    #   on_code_failure: "draft" (default) - ship the best candidate, loudly
+    #                    labeled UNVERIFIED with the real error and an
+    #                    account of what was tried (a dead-end refusal on a
+    #                    reasonable coding question is worse than an honest
+    #                    draft);
+    #                    "refuse" - broken code never leaves (strict installs).
+    # The label is never optional; the knob only picks draft vs refusal.
+    "verification": {"on_code_failure": "draft"},
     # ACTION POLICY (layer 9 v0.1): capabilities the system may exercise on a
     # user's prior request. Only notify-style actions exist; each is
     # role-scoped and capped. "*" = any role.
@@ -306,54 +310,55 @@ class SemanticRAGManager:
                  "is_available": True, "created_at": info.get("created_at", "")}
                 for did, info in self.datasets.items()]
 
-    def create_dataset(self, name: str, description: str, files: List[Dict[str, Any]],
-                       progress=None) -> Dict[str, Any]:
-        """Chunk, embed and index files. `progress(done, total)` is called as
-        embedding advances so long ingests can show live status - embedding
-        is CPU-bound and a large PDF takes real time.
+    @staticmethod
+    def _file_to_text(file_data: Dict[str, Any]) -> str:
+        """Extract real text from an uploaded file record ('' if none).
+
+        A PDF is BINARY: decoding its bytes as utf-8 produced garbage
+        chunks that embedded to noise and retrieved nothing.
         """
-        dataset_id = f"rag-{uuid.uuid4().hex[:8]}"
-        # Pass 1: chunk everything first so progress has a real denominator.
+        content = file_data.get("content", "")
+        filename = file_data.get("filename", "unknown")
+        if file_data.get("encoding") == "base64":
+            import base64
+            raw = base64.b64decode(content)
+            if filename.lower().endswith('.pdf') or raw[:5] == b'%PDF-':
+                try:
+                    import io
+                    from pypdf import PdfReader
+                    content = '\n'.join(
+                        (pg.extract_text() or '')
+                        for pg in PdfReader(io.BytesIO(raw)).pages).strip()
+                except Exception as e:
+                    logger.error(f"PDF text extraction failed for {filename}: {e}")
+                    content = ""
+                if not content:
+                    logger.error(f"No extractable text in {filename} "
+                                 f"(scanned/image-only PDF?)")
+            else:
+                content = raw.decode('utf-8', errors='ignore')
+        return content or ""
+
+    def _ingest_files(self, dataset_id: str, files: List[Dict[str, Any]],
+                      start_index: int, progress=None) -> List[Dict[str, Any]]:
+        """files -> chunked, embedded document records (shared by create/add)."""
         pending = []  # (filename, chunk_index, text)
         for file_data in files:
             try:
-                content = file_data.get("content", "")
+                content = self._file_to_text(file_data)
+                if not content:
+                    continue
                 filename = file_data.get("filename", "unknown")
-                if file_data.get("encoding") == "base64":
-                    import base64
-                    raw = base64.b64decode(content)
-                    # A PDF is BINARY: decoding its bytes as utf-8 produced
-                    # garbage chunks that embedded to noise and retrieved
-                    # nothing - the knowledge base looked created but was
-                    # unusable. Extract real text instead.
-                    if filename.lower().endswith('.pdf') or raw[:5] == b'%PDF-':
-                        try:
-                            import io
-                            from pypdf import PdfReader
-                            content = '\n'.join(
-                                (pg.extract_text() or '')
-                                for pg in PdfReader(io.BytesIO(raw)).pages).strip()
-                        except Exception as e:
-                            logger.error(f"PDF text extraction failed for "
-                                         f"{filename}: {e}")
-                            content = ""
-                        if not content:
-                            logger.error(f"No extractable text in {filename} "
-                                         f"(scanned/image-only PDF?)")
-                            continue
-                    else:
-                        content = raw.decode('utf-8', errors='ignore')
                 # 220 words (~300 tokens) fits comfortably inside the BGE
                 # 512-token embedding window; 350-word chunks overflowed it.
                 for i, chunk in enumerate(self._chunk_text(content, chunk_size=220)):
                     pending.append((filename, i, chunk))
             except Exception as e:
                 logger.error(f"Error processing file: {e}")
-        # Pass 2: embed with progress.
         documents = []
         total = len(pending)
         for n, (filename, i, chunk) in enumerate(pending):
-            documents.append({"id": f"{dataset_id}-doc-{len(documents)}",
+            documents.append({"id": f"{dataset_id}-doc-{start_index + len(documents)}",
                               "source": filename, "content": chunk,
                               "chunk_index": i, "embedding": _embed(chunk)})
             if progress and (n % 3 == 0 or n == total - 1):
@@ -361,6 +366,16 @@ class SemanticRAGManager:
                     progress(n + 1, total)
                 except Exception:
                     pass
+        return documents
+
+    def create_dataset(self, name: str, description: str, files: List[Dict[str, Any]],
+                       progress=None) -> Dict[str, Any]:
+        """Chunk, embed and index files. `progress(done, total)` is called as
+        embedding advances so long ingests can show live status - embedding
+        is CPU-bound and a large PDF takes real time.
+        """
+        dataset_id = f"rag-{uuid.uuid4().hex[:8]}"
+        documents = self._ingest_files(dataset_id, files, 0, progress)
         from datetime import datetime as _dt
         self.datasets[dataset_id] = {"name": name, "description": description,
                                      "documents": documents,
@@ -372,6 +387,67 @@ class SemanticRAGManager:
         logger.info(f"Created dataset '{name}' with {len(documents)} chunks")
         return {"id": dataset_id, "name": name, "description": description,
                 "document_count": len(documents), "is_available": True}
+
+    def add_files(self, dataset_id: str, files: List[Dict[str, Any]],
+                  progress=None) -> Optional[Dict[str, Any]]:
+        """Append files to an existing dataset (knowledge bases are editable,
+        not create-once). Returns the updated summary, or None if not found.
+        """
+        if dataset_id not in self.datasets:
+            return None
+        info = self.datasets[dataset_id]
+        docs = info.get("documents", [])
+        new_docs = self._ingest_files(dataset_id, files, len(docs), progress)
+        docs.extend(new_docs)
+        info["documents"] = docs
+        self._matrix_cache.pop(dataset_id, None)
+        self._backfilled.discard(dataset_id)
+        self._save_datasets()
+        logger.info(f"Added {len(new_docs)} chunks to dataset "
+                    f"'{info.get('name')}'")
+        return {"id": dataset_id, "name": info.get("name"),
+                "added_chunks": len(new_docs), "document_count": len(docs)}
+
+    def remove_source(self, dataset_id: str, source: str) -> Optional[int]:
+        """Remove every chunk of one source file from a dataset. Returns the
+        number of chunks removed, or None if the dataset doesn't exist."""
+        if dataset_id not in self.datasets:
+            return None
+        info = self.datasets[dataset_id]
+        docs = info.get("documents", [])
+        keep = [d for d in docs if (d.get("source") or "") != source]
+        removed = len(docs) - len(keep)
+        if removed:
+            info["documents"] = keep
+            self._matrix_cache.pop(dataset_id, None)
+            self._save_datasets()
+            logger.info(f"Removed {removed} chunks of '{source}' from "
+                        f"'{info.get('name')}'")
+        return removed
+
+    def dataset_sources(self, dataset_id: str) -> List[Dict[str, Any]]:
+        """Distinct source files in a dataset with their chunk counts."""
+        info = self.datasets.get(dataset_id) or {}
+        counts: Dict[str, int] = {}
+        for d in info.get("documents", []):
+            s = d.get("source") or "unknown"
+            counts[s] = counts.get(s, 0) + 1
+        return [{"source": s, "chunks": n} for s, n in sorted(counts.items())]
+
+    def match_dataset(self, prompt: str) -> Optional[str]:
+        """Resolve a knowledge base the user named in plain language -
+        "tell me about 'twhyne'", "in the handbook database, what..." -
+        to its dataset id. Longest name match wins; None if nothing matches.
+        """
+        p = (prompt or "").lower()
+        best, best_len = None, 0
+        for did, info in self.datasets.items():
+            name = str(info.get("name") or "").lower().strip()
+            base = re.sub(r'\.(pdf|txt|md|csv|json)$', '', name)
+            for cand in {name, base}:
+                if len(cand) >= 3 and cand in p and len(cand) > best_len:
+                    best, best_len = did, len(cand)
+        return best
 
     def delete_dataset(self, dataset_id: str) -> bool:
         if dataset_id in self.datasets:

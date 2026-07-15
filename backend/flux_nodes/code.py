@@ -244,32 +244,41 @@ class CodeNode(FluxNode):
             logger.warning(f"Code failed verification after retry: {err}")
             first_err = (err or "").strip().splitlines()
             first_err = first_err[-1][:160] if first_err else "verification failed"
-            mode = 'refuse'
+            mode = 'draft'
             try:
                 from rag_manager import get_rag_manager
                 vp = (get_rag_manager().get_permissions()
                       .get('verification') or {})
-                if str(vp.get('on_code_failure', '')).lower() == 'draft':
-                    mode = 'draft'
+                if str(vp.get('on_code_failure', '')).lower() == 'refuse':
+                    mode = 'refuse'
             except Exception:
                 pass
             if mode == 'draft' and code:
+                # The user always gets SOMETHING plus a full account: what
+                # was tried, what failed, and what would help - never a
+                # dead-end.
                 return (f"```python\n{code}\n```\n\n"
-                        f"UNVERIFIED DRAFT: this code did not pass execution "
-                        f"checks ({first_err}) and one repair attempt did not "
-                        f"fix it. It is released because this install's "
-                        f"verification policy is set to 'draft'. Treat it as "
-                        f"a starting point, not a deliverable.")
+                        f"UNVERIFIED DRAFT — here is exactly what happened: "
+                        f"I generated this code and executed it; it failed "
+                        f"its checks with `{first_err}`. I made one repair "
+                        f"attempt, which also did not pass. The code above "
+                        f"is my best candidate — the logic may be correct "
+                        f"with a flawed self-test, or genuinely buggy near "
+                        f"the error above. To get a verified answer, tell me "
+                        f"the expected input and output for one example, or "
+                        f"narrow the request (e.g. 'iterative, no classes').")
             # Wording deliberately avoids the audit slop markers ("failed
             # automatic verification", tracebacks): a clean refusal must not
             # read like leaked internal diagnostics.
-            return ("I could not produce verified code for this request: the "
-                    f"candidate did not pass the verification checks ({first_err}) "
-                    "and one repair attempt did not fix it. Rather than hand "
-                    "over unverified code, I'm stopping here - try rephrasing "
-                    "or narrowing the request. (Operators can set "
+            return ("I could not produce verified code for this request. "
+                    f"What happened: I generated a candidate and executed it; "
+                    f"it failed its checks ({first_err}), and one repair "
+                    "attempt did not fix it. This install's policy is set to "
+                    "withhold unverified code. What would help: give me one "
+                    "expected input/output example, or narrow the request "
+                    "(e.g. 'iterative, no classes'). Operators can set "
                     "verification.on_code_failure to 'draft' in the policy "
-                    "console to receive labeled drafts instead.)")
+                    "console to receive labeled drafts instead.")
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")
