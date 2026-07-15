@@ -425,6 +425,16 @@ class SemanticRAGManager:
                         f"'{info.get('name')}'")
         return removed
 
+    def all_sources(self) -> set:
+        """Every source filename currently present in any dataset - the
+        ground truth for 'does this cited document still exist'."""
+        out = set()
+        for info in self.datasets.values():
+            for d in info.get("documents", []):
+                if d.get("source"):
+                    out.add(d["source"])
+        return out
+
     def dataset_sources(self, dataset_id: str) -> List[Dict[str, Any]]:
         """Distinct source files in a dataset with their chunk counts."""
         info = self.datasets.get(dataset_id) or {}

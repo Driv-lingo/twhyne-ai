@@ -1414,6 +1414,37 @@ def create_app():
             if request.path == '/query' and resp.is_json:
                 data = resp.get_json(silent=True) or {}
                 changed = False
+                # PROVENANCE INTEGRITY: an answer citing a document that has
+                # since been removed - or leaning on conversation history
+                # about one - must SAY so. The evidence ledger stays intact
+                # (hashes are immutable), but the answer surface must not
+                # imply a document exists when it does not.
+                try:
+                    from flask import g as _pg
+                    stale = []
+                    if data.get('sources'):
+                        current = get_rag_manager().all_sources()
+                        stale = [s for s in data['sources'] if s not in current]
+                    gone = getattr(_pg, 'stale_followup', None)
+                    if gone and gone not in stale:
+                        stale.append(gone)
+                    if stale and isinstance(data.get('response'), str):
+                        names = ', '.join(f'"{s}"' for s in stale)
+                        note = (f"\n\n⚠ Provenance note: {names} "
+                                f"{'has' if len(stale) == 1 else 'have'} since "
+                                f"been removed from the knowledge base. The "
+                                f"statements above draw on this "
+                                f"conversation's earlier citations, not on "
+                                f"any current document.")
+                        for k in ('result', 'response'):
+                            if isinstance(data.get(k), str):
+                                data[k] = data[k] + note
+                        data['stale_sources'] = stale
+                        # NOT `changed`: that flag means secret redaction and
+                        # fires a security alert; this is a provenance label.
+                        resp.set_data(__import__('json').dumps(data))
+                except Exception:
+                    pass
                 for k in ('result', 'response'):
                     if isinstance(data.get(k), str):
                         scrubbed, hits = _scrub_secrets(data[k])
@@ -1774,6 +1805,16 @@ def create_app():
                                     logger.info(f"Sticky follow-up dataset "
                                                 f"-> {_did} (via {_src0})")
                                     break
+                            else:
+                                # The document this conversation was citing
+                                # has since been REMOVED. Anything said about
+                                # it from here on comes from chat history,
+                                # not current documents - the choke point
+                                # labels the answer accordingly.
+                                from flask import g as _gg
+                                _gg.stale_followup = _src0
+                                logger.info(f"Follow-up references removed "
+                                            f"source '{_src0}'")
                             break
                 except Exception:
                     pass
