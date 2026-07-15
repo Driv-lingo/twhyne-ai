@@ -2028,6 +2028,38 @@ def create_app():
                     return jsonify(payload)
 
                 logger.info(f"Grounded answer (top_score={top_score}). Sources: {sources}")
+                # The KB's NAME is addressing metadata, not a content term.
+                # Left in the question, the model hunts for the literal name
+                # inside the data ("no information about 'bleb'" while
+                # reading bleb's own contents - observed live). Replace the
+                # name with 'this document' before the model sees it.
+                model_prompt = prompt
+                if named_ds:
+                    try:
+                        _nm = str((get_rag_manager().datasets.get(named_ds)
+                                   or {}).get('name') or '')
+                        for tok in sorted(re.findall(r'[A-Za-z0-9]+', _nm),
+                                          key=len, reverse=True):
+                            if len(tok) >= 2:
+                                model_prompt = re.sub(
+                                    r'["\']?\b' + re.escape(tok) + r'\b["\']?',
+                                    'this document', model_prompt,
+                                    flags=re.I)
+                        # Collapse the debris a multi-word name leaves behind:
+                        # "the this document this document database" ->
+                        # "this document".
+                        model_prompt = re.sub(
+                            r'(this document)([\s,]+this document)+',
+                            r'\1', model_prompt)
+                        model_prompt = re.sub(
+                            r'\bthe\s+this document', 'this document',
+                            model_prompt, flags=re.I)
+                        model_prompt = re.sub(
+                            r'\bthis document\s+(database|knowledge base|kb|'
+                            r'dataset|file|folder)\b', 'this document',
+                            model_prompt, flags=re.I)
+                    except Exception:
+                        model_prompt = prompt
                 lang = node_registry.get_node('language-mistral-7b')
                 recent = _recent_context(conversation_history)
                 hist_block = (f"Recent conversation (for reference only):\n{recent}\n\n"
@@ -2041,7 +2073,7 @@ def create_app():
                     "supported and note the rest is not in the provided sources. "
                     "Do not add facts that are not in the sources.\n\n"
                     f"{hist_block}"
-                    f"Sources:\n{context}\nQuestion: {prompt}\n\nAnswer:"
+                    f"Sources:\n{context}\nQuestion: {model_prompt}\n\nAnswer:"
                 )
                 # Full conversation history stays out of grounded mode (it
                 # caused token overflows); the capped snippet above is enough
