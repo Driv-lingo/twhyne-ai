@@ -37,6 +37,8 @@ jobs:
           load: true
           push: false
           tags: twhyne/twhyne:candidate
+          build-args: |
+            TWHYNE_BUILD=${{ github.sha }}
 
       - name: Smoke test 1 - engine and deps import
         run: |

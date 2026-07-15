@@ -2618,6 +2618,11 @@ def create_app():
         """Self-contained policy + identity console (no React build needed)."""
         return POLICY_CONSOLE_HTML, 200, {'Content-Type': 'text/html'}
 
+    @app.route('/version', methods=['GET'])
+    def version_info():
+        """Which build is this? Ends the 'am I on the new image?' guesswork."""
+        return jsonify({'build': os.environ.get('TWHYNE_BUILD', 'dev')[:12]})
+
     @app.route('/api/rag/status', methods=['GET'])
     def rag_status():
         try:

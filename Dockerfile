@@ -16,6 +16,11 @@ FROM python:3.11-bullseye
 WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1
+# Build identity: which commit this image was built from. Surfaced at
+# /version and in the UI footer so "which build am I running" is a
+# two-second check, not archaeology.
+ARG TWHYNE_BUILD=dev
+ENV TWHYNE_BUILD=${TWHYNE_BUILD}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl procps build-essential \

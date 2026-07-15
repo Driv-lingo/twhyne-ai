@@ -231,6 +231,14 @@ function App() {
   // computes their state from the clock only when the list is observed.
   // This poll is the user's client observing on their behalf — the system
   // itself never acts between reads.
+  // Build identity: which image is actually running (fetched once).
+  const [buildId, setBuildId] = useState('');
+  useEffect(() => {
+    axios.get('http://127.0.0.1:5002/version')
+      .then(r => setBuildId((r.data && r.data.build) || ''))
+      .catch(() => {});
+  }, []);
+
   const [timers, setTimers] = useState([]);
   const seenElapsedRef = useRef(new Set());
   const firstTimerPollRef = useRef(true);
@@ -773,7 +781,7 @@ function App() {
       <header className="header">
           <div className="logo">
           <h1><span className="highlight">Twhyne</span></h1>
-          <div className="subtitle">Local-first verified AI &mdash; permissioned &amp; auditable</div>
+          <div className="subtitle">Local-first verified AI &mdash; permissioned &amp; auditable{buildId ? <span style={{opacity:0.55, marginLeft:10, fontSize:'0.8em', fontFamily:'IBM Plex Mono, monospace'}}>build {buildId}</span> : null}</div>
             </div>
         <div className="status-bar">
           <div className="status-item">
