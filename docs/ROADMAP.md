@@ -64,6 +64,18 @@ value order:
   are one user, one box, CPU), huge-pages/TLB work (llama.cpp already mmaps;
   low single digits).
 
+### GPU tier: near-frontier code, fully local (the on-prem ceiling raiser)
+The CPU 7B is the demo-tier FLOOR. Qwen2.5-Coder-32B (open weights,
+GPT-4-neighborhood on code benchmarks) runs quantized on one 24GB GPU -
+hardware on-prem enterprise buyers already have. Work items: CUDA image
+variant (twhyne:gpu; llama.cpp CUDA build, TWHYNE_GPU_LAYERS already
+plumbed), 32B coder + 32B/70B generalist in the registry, launcher GPU
+detection. Open weights are commodity ingredients we own and swap (the
+node-registry thesis) - not a dependency on anyone's service. Combined
+with best-of-N verified sampling (shipped: TWHYNE_CODE_CANDIDATES) and
+examples-as-tests, the beatable metric vs frontier assistants is the
+rate of PROVABLY CORRECT delivered code - architectural, not parametric.
+
 ### Verified composition pipeline (code, post-pilot)
 The model's job shrinks to DECOMPOSING English into a plan over named,
 typed, individually-tested components; assembly is deterministic

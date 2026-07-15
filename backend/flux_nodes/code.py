@@ -283,6 +283,29 @@ class CodeNode(FluxNode):
                 return _verify_code(c + ('\n' + user_tests if user_tests else ''))
 
             ok, err = _verify_with_examples(code)
+            # BEST-OF-N VERIFIED SAMPLING: extra candidates, each EXECUTED,
+            # first verified one ships. Turns compute into correctness
+            # (50% per-sample -> ~94% at n=4) without a bigger model.
+            # Default 1 on CPU (latency); raise TWHYNE_CODE_CANDIDATES on
+            # GPU/big hardware where samples are cheap.
+            n_candidates = max(1, int(os.environ.get(
+                'TWHYNE_CODE_CANDIDATES', '1') or 1))
+            attempt = 1
+            while not ok and attempt < n_candidates:
+                attempt += 1
+                logger.info(f"Candidate {attempt}/{n_candidates} "
+                            f"(previous failed: {str(err)[:80]})")
+                raw_n = self._generate_once(
+                    model, self._format_prompt(prompt, history))
+                code_n = _extract_code(raw_n)
+                if not code_n:
+                    continue
+                code_n = _trim_to_compilable(code_n)
+                ok_n, err_n = _verify_with_examples(code_n)
+                if ok_n:
+                    code, ok, err = code_n, True, ""
+                else:
+                    code, err = code_n, err_n
             if not ok:
                 logger.info(f"Generated code failed verification ({err}); retrying once")
                 retry_prompt = self._format_prompt(prompt, history) + (
