@@ -101,15 +101,21 @@ echo ============================================================
 
 REM No --rm: keep the stopped container so `docker logs twhyne-ai`
 REM survives a crash for diagnosis (removed on next launch above).
+REM Memory: 12g default. Machines with 32GB+ RAM can set TWHYNE_MEM=18g and
+REM TWHYNE_MAX_RESIDENT=2 to keep BOTH models loaded - eliminates the
+REM multi-minute swap between code and chat questions.
+if "%TWHYNE_MEM%"=="" set TWHYNE_MEM=12g
+if "%TWHYNE_MAX_RESIDENT%"=="" set TWHYNE_MAX_RESIDENT=1
 docker run --name twhyne-ai ^
   -e SNF_LICENSE_KEY=%SNF_LICENSE_KEY% ^
   -e LICENSE_API_URL=https://twhyne.com ^
   -e SNF_LICENSE_API=https://twhyne.com ^
+  -e TWHYNE_MAX_RESIDENT=%TWHYNE_MAX_RESIDENT% ^
   -v "%MODELS_DIR%:/app/models" ^
   -v "%RAG_DIR%:/app/backend/rag_storage" ^
   -p 3000:3000 ^
   -p 5002:5002 ^
-  -m 12g ^
+  -m %TWHYNE_MEM% ^
   %IMAGE%
 
 echo.
