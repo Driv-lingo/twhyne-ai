@@ -10,6 +10,8 @@
 import React from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 
 // Human-readable node names (never show raw ids like "language-mistral-7b").
 const NODE_LABELS = {
@@ -108,8 +110,43 @@ export function TrustStrip({ node, gates, sources, evidence }) {
   );
 }
 
-// Render assistant content with real code blocks instead of literal ``` fences.
+// Render assistant content with real code blocks instead of literal ``` fences,
+// and real typeset math instead of raw $$...$$ (KaTeX is bundled - no CDN,
+// nothing leaves the machine).
 const FENCE = /```(\w+)?\n?([\s\S]*?)```/g;
+const MATH = /\$\$([\s\S]+?)\$\$/g;
+
+function MathSpan({ tex, display }) {
+  let html;
+  try {
+    html = katex.renderToString(tex, { displayMode: display, throwOnError: true });
+  } catch (e) {
+    // Bad TeX renders as its source, never as a crash or a blank.
+    return <span className="msg-text">{display ? `$$${tex}$$` : tex}</span>;
+  }
+  return <span className={display ? 'math-display' : 'math-inline'}
+               dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+function TextWithMath({ text, keyBase }) {
+  const parts = [];
+  let last = 0;
+  let m;
+  let i = 0;
+  MATH.lastIndex = 0;
+  while ((m = MATH.exec(text)) !== null) {
+    if (m.index > last) {
+      parts.push(<span key={`${keyBase}t${i}`} className="msg-text">{text.slice(last, m.index)}</span>);
+    }
+    parts.push(<MathSpan key={`${keyBase}m${i}`} tex={m[1].trim()} display={true} />);
+    last = MATH.lastIndex;
+    i++;
+  }
+  if (last < text.length) {
+    parts.push(<span key={`${keyBase}t${i}`} className="msg-text">{text.slice(last)}</span>);
+  }
+  return <>{parts}</>;
+}
 
 export function MessageBody({ content }) {
   if (!content || typeof content !== 'string') return <>{content}</>;
@@ -120,7 +157,7 @@ export function MessageBody({ content }) {
   FENCE.lastIndex = 0;
   while ((m = FENCE.exec(content)) !== null) {
     if (m.index > last) {
-      parts.push(<span key={`t${i}`} className="msg-text">{content.slice(last, m.index)}</span>);
+      parts.push(<TextWithMath key={`t${i}`} keyBase={`t${i}`} text={content.slice(last, m.index)} />);
     }
     const lang = m[1] || 'text';
     parts.push(
@@ -133,7 +170,7 @@ export function MessageBody({ content }) {
     i++;
   }
   if (last < content.length) {
-    parts.push(<span key={`t${i}`} className="msg-text">{content.slice(last)}</span>);
+    parts.push(<TextWithMath key={`t${i}`} keyBase={`t${i}`} text={content.slice(last)} />);
   }
   return <>{parts}</>;
 }

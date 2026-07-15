@@ -120,19 +120,25 @@ class MathNode(FluxNode):
         x, y, z, t = symbols('x y z t')
         local = {'x': x, 'y': y, 'z': z, 't': t}
         try:
+            # Answers ship as LaTeX ($$...$$): the UI typesets it with KaTeX;
+            # any other client still sees readable TeX source.
+            from sympy import latex as _ltx
+
             # Derivative
             m = re.search(r'(?:derivative|differentiate)\s+(?:of\s+)?(.+?)(?:\s+with respect to\s+(\w+))?$', ql)
             if m:
                 expr = parse_expr(m.group(1), transformations=_TRANSFORMS, local_dict=local)
                 var = symbols(m.group(2)) if m.group(2) else x
-                return f"d/d{var}: {diff(expr, var)}"
+                return (f"$$\\frac{{d}}{{d{var}}}\\left({_ltx(expr)}\\right)"
+                        f" = {_ltx(diff(expr, var))}$$")
 
             # Integral
             m = re.search(r'(?:integral|integrate)\s+(?:of\s+)?(.+?)(?:\s+with respect to\s+(\w+))?$', ql)
             if m:
                 expr = parse_expr(m.group(1), transformations=_TRANSFORMS, local_dict=local)
                 var = symbols(m.group(2)) if m.group(2) else x
-                return f"∫: {integrate(expr, var)} + C"
+                return (f"$$\\int {_ltx(expr)}\\, d{var}"
+                        f" = {_ltx(integrate(expr, var))} + C$$")
 
             # Equation solving
             if 'solve' in ql or ('=' in q and '==' not in q):
@@ -147,7 +153,8 @@ class MathNode(FluxNode):
                 syms = sorted(equation.free_symbols, key=lambda s: s.name) if hasattr(equation, 'free_symbols') else [x]
                 target = syms[0] if syms else x
                 sol = solve(equation, target)
-                return f"{target} = {sol}"
+                sol_tex = ",\\; ".join(_ltx(s) for s in sol) if isinstance(sol, list) else _ltx(sol)
+                return f"$${_ltx(target)} = {sol_tex}$$"
 
             # Plain expression -> exact value. Extract the expression from the
             # sentence first so surrounding words never become symbols.
@@ -157,14 +164,20 @@ class MathNode(FluxNode):
             expr = parse_expr(expr_str, transformations=_ARITH_TRANSFORMS, local_dict=local)
             val = simplify(expr)
             if not val.free_symbols:
-                # numeric result: show exact, and a decimal if not an integer
+                # numeric result: exact value typeset with the expression it
+                # came from - unless the parser already evaluated it (then
+                # "expr = val" would print "256 = 256").
+                lhs = _ltx(expr)
+                eq = f"{lhs} = " if lhs != _ltx(val) else ""
                 if isinstance(val, Integer):
-                    return str(val)
+                    return f"$${eq}{_ltx(val)}$$"
                 if isinstance(val, Float) and val == int(val):
-                    return str(int(val))  # 0.5*8 -> "4", not "4.00000000000000"
-                approx = N(val, 12)
-                return f"{val}  (≈ {approx})" if str(val) != str(approx) else str(approx)
-            return str(val)
+                    return f"$${eq}{int(val)}$$"
+                approx = str(N(val, 12)).rstrip('0').rstrip('.')
+                if str(val) != str(N(val, 12)):
+                    return f"$${eq}{_ltx(val)} \\approx {approx}$$"
+                return f"$${eq}{approx}$$"
+            return f"$${_ltx(val)}$$"
         except Exception as e:
             logger.info(f"SymPy could not parse '{query}': {e}")
             return None
