@@ -64,6 +64,20 @@ value order:
   are one user, one box, CPU), huge-pages/TLB work (llama.cpp already mmaps;
   low single digits).
 
+### Verified composition pipeline (code, post-pilot)
+The model's job shrinks to DECOMPOSING English into a plan over named,
+typed, individually-tested components; assembly is deterministic
+(compiler-like), verification runs the user's examples plus
+property-based tests, and components the model authors that pass strong
+verification become library candidates promoted by HUMAN approval with
+provenance. "Getting better at coding" = the library-hit rate rising in
+the ledger, not weight updates. Shipped rungs: verified snippet library
+(36), examples-as-executable-tests. Next rungs: property-based tests
+(Hypothesis), typed component contracts + assembler, differential
+testing against reference implementations. Honest ceiling: a 7B local
+model will not match frontier assistants on NOVEL code; the pipeline
+wins by making the common 80% deterministic and verified.
+
 ### Ingest
 - **OCR fallback for scanned/image-only PDFs** (Tesseract in-container,
   triggers only when no text layer, chunks flagged ocr:true, citations
