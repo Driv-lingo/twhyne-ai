@@ -638,7 +638,27 @@ class SemanticRAGManager:
             chunk = ' '.join(words[i:i + chunk_size])
             if chunk.strip():
                 chunks.append(chunk)
-        return chunks if chunks else [text]
+        chunks = chunks if chunks else [text]
+        # HARD CHARACTER CAP. Word-count chunking assumes prose; a CSV row
+        # is one enormous "word", so a whole spreadsheet became a single
+        # chunk - which then overflowed every context budget downstream and
+        # produced "I don't have that in my provided sources" for a document
+        # the system was holding (observed live). 1500 chars ~ the embedding
+        # window; split oversized chunks on line boundaries where possible.
+        MAXC = 1500
+        out = []
+        for c in chunks:
+            while len(c) > MAXC:
+                cut = c.rfind('\n', MAXC // 2, MAXC)
+                if cut == -1:
+                    cut = c.rfind(' ', MAXC // 2, MAXC)
+                if cut == -1:
+                    cut = MAXC
+                out.append(c[:cut].strip())
+                c = c[cut:].strip()
+            if c:
+                out.append(c)
+        return out if out else chunks
 
 
 _rag_manager = None

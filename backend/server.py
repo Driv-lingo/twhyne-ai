@@ -1821,6 +1821,15 @@ def create_app():
                         for r in kept:
                             piece = f"[Source: {r['source']}]\n{r['content']}\n\n"
                             if len(context) + len(piece) > MAX_CONTEXT_CHARS:
+                                # Truncate into the remaining budget - an
+                                # oversized FIRST piece must never yield an
+                                # empty context (observed as a false "not in
+                                # my sources").
+                                remaining = MAX_CONTEXT_CHARS - len(context)
+                                if remaining > 200:
+                                    context += piece[:remaining]
+                                    if r['source'] not in sources:
+                                        sources.append(r['source'])
                                 break
                             context += piece
                             if r['source'] not in sources:
@@ -1878,6 +1887,16 @@ def create_app():
                     for r in kept:
                         piece = f"[Source: {r['source']}]\n{r['content']}\n\n"
                         if len(context) + len(piece) > MAX_CONTEXT_CHARS:
+                            # Truncate, never break to an empty context: the
+                            # 'bleb' CSV ingested (pre chunk-cap) as one giant
+                            # chunk, the first piece overflowed the budget,
+                            # and overview answered "not in my sources" while
+                            # HOLDING the document.
+                            remaining = MAX_CONTEXT_CHARS - len(context)
+                            if remaining > 200:
+                                context += piece[:remaining]
+                                if r['source'] not in sources:
+                                    sources.append(r['source'])
                             break
                         context += piece
                         if r['source'] not in sources:
