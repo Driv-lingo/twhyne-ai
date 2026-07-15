@@ -128,6 +128,52 @@ function MathSpan({ tex, display }) {
                dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
+// Minimal inline markdown: **bold** only (everything else stays literal -
+// a renderer that guesses too much mangles real content).
+function boldSpans(text, keyBase) {
+  const out = [];
+  const BOLD = /\*\*([^*\n]+)\*\*/g;
+  let last = 0, m, i = 0;
+  while ((m = BOLD.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(<strong key={`${keyBase}b${i++}`}>{m[1]}</strong>);
+    last = BOLD.lastIndex;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+// Block-level: consecutive "- " lines become a real list; other lines keep
+// their breaks. Applied to plain-text segments only (never code or math).
+function MdBlock({ text, keyBase }) {
+  const lines = text.split('\n');
+  const blocks = [];
+  let list = [];
+  let i = 0;
+  const flushList = () => {
+    if (list.length) {
+      blocks.push(
+        <ul key={`${keyBase}ul${i++}`} className="msg-list">
+          {list.map((li, j) => <li key={j}>{boldSpans(li, `${keyBase}l${i}${j}`)}</li>)}
+        </ul>);
+      list = [];
+    }
+  };
+  lines.forEach((line, n) => {
+    if (/^\s*[-•]\s+/.test(line)) {
+      list.push(line.replace(/^\s*[-•]\s+/, ''));
+    } else {
+      flushList();
+      blocks.push(
+        <span key={`${keyBase}p${n}`} className="msg-text">
+          {boldSpans(line, `${keyBase}p${n}`)}{'\n'}
+        </span>);
+    }
+  });
+  flushList();
+  return <>{blocks}</>;
+}
+
 function TextWithMath({ text, keyBase }) {
   const parts = [];
   let last = 0;
@@ -136,14 +182,14 @@ function TextWithMath({ text, keyBase }) {
   MATH.lastIndex = 0;
   while ((m = MATH.exec(text)) !== null) {
     if (m.index > last) {
-      parts.push(<span key={`${keyBase}t${i}`} className="msg-text">{text.slice(last, m.index)}</span>);
+      parts.push(<MdBlock key={`${keyBase}t${i}`} keyBase={`${keyBase}t${i}`} text={text.slice(last, m.index)} />);
     }
     parts.push(<MathSpan key={`${keyBase}m${i}`} tex={m[1].trim()} display={true} />);
     last = MATH.lastIndex;
     i++;
   }
   if (last < text.length) {
-    parts.push(<span key={`${keyBase}t${i}`} className="msg-text">{text.slice(last)}</span>);
+    parts.push(<MdBlock key={`${keyBase}t${i}`} keyBase={`${keyBase}t${i}`} text={text.slice(last)} />);
   }
   return <>{parts}</>;
 }

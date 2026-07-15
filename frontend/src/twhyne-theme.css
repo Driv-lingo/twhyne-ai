@@ -688,3 +688,7 @@ body {
 /* honest ephemerality notice in the empty chat state */
 .ephemeral-note{ margin-top:14px; font-family:'IBM Plex Mono', monospace;
   font-size:11.5px; letter-spacing:.03em; color:#6b7280; max-width:440px; }
+
+/* markdown lists in chat bubbles */
+.msg-list{ margin:8px 0; padding-left:20px; }
+.msg-list li{ margin:3px 0; }
