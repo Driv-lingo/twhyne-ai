@@ -445,6 +445,13 @@ def _route_query(prompt: str, node_registry) -> Optional[Any]:
                'data structure', 'regex', 'sql']:
         if _has_kw(kw):
             scores[CODE_NODE_ID] += 1
+    # "Write a function to CALCULATE Fibonacci numbers" is a CODE request:
+    # 'calculate' scored math +2 and outweighed 'function' +1, misrouting a
+    # build-me-code ask to SymPy (observed live). An explicit build verb
+    # next to a code noun is decisive.
+    if re.search(r'\b(write|implement|build|create)\b.{0,30}\b(function|'
+                 r'program|script|class|code)\b', p):
+        scores[CODE_NODE_ID] += 3
     for kw in ['plan', 'schedule', 'organize', 'workflow', 'itinerary', 'trip', 'project', 'timeline', 'roadmap']:
         if _has_kw(kw):
             scores['planner-mistral-7b'] += 1

@@ -125,6 +125,25 @@ function App() {
   const activeRequestRef = useRef(null);
   const abortRef = useRef(null);
   const activeClientIdRef = useRef(null);
+  // MULTI-FLIGHT: several questions may be in flight at once. Each gets a
+  // pending placeholder bubble filled in when ITS answer arrives (instant
+  // answers - math, timers, KB lookups - return while a slow generation is
+  // still running; generations queue server-side behind the inference lock).
+  const controllersRef = useRef(new Map());   // rid -> AbortController
+  const cancelledRef = useRef(new Set());     // rids whose answers to discard
+  const pendingCountRef = useRef(0);
+  const fillPlaceholder = (rid, turn) => {
+    setHistory(prev => prev.map(m =>
+      (m.rid === rid && m.pending) ? { ...turn, rid } : m));
+  };
+  const finishRequest = (rid) => {
+    controllersRef.current.delete(rid);
+    pendingCountRef.current = Math.max(0, pendingCountRef.current - 1);
+    if (pendingCountRef.current === 0) setIsLoading(false);
+  };
+  // History as sent to the backend: real turns only, never placeholders or
+  // local system notices.
+  const cleanHistory = (h) => h.filter(m => !m.pending && m.role !== 'system');
   const [progressText, setProgressText] = useState('');
   const [selectedNode, setSelectedNode] = useState(null);
   const [nodeStatus, setNodeStatus] = useState({});
@@ -459,26 +478,28 @@ function App() {
   
   // Handle query submission
   const handleSubmit = async () => {
-    if ((!query.trim() && !file) || isLoading) return;
+    if (!query.trim() && !file) return;  // multi-flight: no isLoading gate
 
     const myRequestId = ++requestIdRef.current;
-    activeRequestRef.current = myRequestId;
-    abortRef.current = new AbortController();
-    const signal = abortRef.current.signal;
+    const controller = new AbortController();
+    const signal = controller.signal;
     // Backend-visible id: lets Cancel skip this job if it is still queued.
     const clientRequestId = `${Date.now()}-${myRequestId}`;
-    activeClientIdRef.current = clientRequestId;
+    controllersRef.current.set(clientRequestId, controller);
+    pendingCountRef.current += 1;
 
     const userQuery = query; // Save query before clearing
     const userTurn = {
       role: 'user',
       content: userQuery
     };
-    
-    // Update UI state immediately for instant feedback
+
+    // Update UI state immediately: the question plus ITS OWN pending bubble,
+    // so answers always land under the right question regardless of order.
     setIsLoading(true);
     setFeedbackSent(false);
-    setHistory(prev => [...prev, userTurn]);
+    setHistory(prev => [...prev, userTurn,
+      { role: 'assistant', pending: true, rid: clientRequestId, content: '' }]);
     setQuery('');
     
     // Small delay to ensure React renders the UI updates
@@ -496,7 +517,7 @@ function App() {
         formData.append('file', file); // Ensure key is 'file' to match backend expectation
         formData.append('prompt', userQuery);
         // Add conversation history for context
-        formData.append('conversation_history', JSON.stringify(history));
+        formData.append('conversation_history', JSON.stringify(cleanHistory(history)));
         // Only add node_id if a specific node is selected
         if (selectedNode) {
           formData.append('node_id', selectedNode);
@@ -524,7 +545,7 @@ function App() {
           // "key points of the attached document" must never fall through
           // to the ungrounded model.
           dataset_id: upKind === 'document' ? (uploadRes.data.dataset_id || null) : null,
-          conversation_history: history,
+          conversation_history: cleanHistory(history),
           client_request_id: clientRequestId
         };
         if (selectedNode) {
@@ -537,23 +558,22 @@ function App() {
           signal
         });
         // Discard if this request was cancelled while in flight.
-        if (activeRequestRef.current !== myRequestId) return;
-        const assistantTurn = {
+        if (cancelledRef.current.has(clientRequestId)) return;
+        fillPlaceholder(clientRequestId, {
           role: 'assistant',
           content: queryRes.data.response,
           node: queryRes.data.node_id,
           gates: queryRes.data.gates,
           sources: queryRes.data.sources,
           evidence: queryRes.data.evidence,
-        };
-        setHistory(prev => [...prev, assistantTurn]);
+        });
         setResponse(queryRes.data.response);
       } else {
         // Use query endpoint for text-only queries
         endpoint = 'http://127.0.0.1:5002/query';
         payload = {
           prompt: userQuery,
-          conversation_history: history,
+          conversation_history: cleanHistory(history),
           client_request_id: clientRequestId
         };
         // Only add node_id if a specific node is selected
@@ -567,21 +587,20 @@ function App() {
           signal
         });
         // Discard if this request was cancelled while in flight.
-        if (activeRequestRef.current !== myRequestId) return;
-        const assistantTurn = {
+        if (cancelledRef.current.has(clientRequestId)) return;
+        fillPlaceholder(clientRequestId, {
           role: 'assistant',
           content: res.data.response,
           node: res.data.node_id,
           gates: res.data.gates,
           sources: res.data.sources,
           evidence: res.data.evidence,
-        };
-        setHistory(prev => [...prev, assistantTurn]);
+        });
         setResponse(res.data.response);
       }
     } catch (err) {
       // A cancelled/stale request must not write anything to the chat.
-      if (activeRequestRef.current !== myRequestId || axios.isCancel?.(err) || err.name === 'CanceledError') return;
+      if (cancelledRef.current.has(clientRequestId) || axios.isCancel?.(err) || err.name === 'CanceledError') return;
       console.error('Error submitting query:', err);
       console.error('Error details:', err.response?.data || err.message);
       let errorMessage;
@@ -592,16 +611,15 @@ function App() {
       } else {
         errorMessage = `Error: ${err.message || 'Unknown error occurred'}. Try a different node or query.`;
       }
-      
+
       setResponse(errorMessage);
-      // Add error message to history
-      setHistory(prev => [...prev, {
+      fillPlaceholder(clientRequestId, {
         role: 'system',
         content: errorMessage,
         error: true
-      }]);
+      });
     } finally {
-      if (activeRequestRef.current === myRequestId) setIsLoading(false);
+      finishRequest(clientRequestId);
     }
   };
   
@@ -610,44 +628,44 @@ function App() {
     if (history.length === 0 || isLoading) return;
 
     const myRequestId = ++requestIdRef.current;
-    activeRequestRef.current = myRequestId;
-    abortRef.current = new AbortController();
-    const signal = abortRef.current.signal;
+    const controller = new AbortController();
+    const signal = controller.signal;
     const clientRequestId = `${Date.now()}-${myRequestId}`;
-    activeClientIdRef.current = clientRequestId;
+    controllersRef.current.set(clientRequestId, controller);
+    pendingCountRef.current += 1;
 
     setIsLoading(true);
     setFeedbackSent(false);
-    
+    setHistory(prev => [...prev,
+      { role: 'assistant', pending: true, rid: clientRequestId, content: '' }]);
+
     try {
       const lastAssistantMessage = history.filter(msg => msg.role === 'assistant').pop();
       const activeNodeId = lastAssistantMessage?.node || 'language';
-      
+
       // Set processing node for visualization
       setProcessingNode(activeNodeId);
-      
+
       const res = await axios.post('http://127.0.0.1:5002/query', {
         prompt: 'Please continue your previous response.',
-        conversation_history: history,
+        conversation_history: cleanHistory(history),
         node_id: activeNodeId,
         client_request_id: clientRequestId
       }, { signal });
 
       // Discard if this request was cancelled while in flight.
-      if (activeRequestRef.current !== myRequestId) return;
-      const assistantTurn = {
+      if (cancelledRef.current.has(clientRequestId)) return;
+      fillPlaceholder(clientRequestId, {
         role: 'assistant',
         content: res.data.result || res.data.response,
         node: res.data.node_id || activeNodeId,
         gates: res.data.gates,
         sources: res.data.sources,
         evidence: res.data.evidence,
-      };
-      
-      setHistory(prev => [...prev, assistantTurn]);
-      
+      });
+
     } catch (err) {
-      if (activeRequestRef.current !== myRequestId || axios.isCancel?.(err) || err.name === 'CanceledError') return;
+      if (cancelledRef.current.has(clientRequestId) || axios.isCancel?.(err) || err.name === 'CanceledError') return;
       let errorMessage;
       if (err.response && err.response.status === 503) {
         errorMessage = 'The language service is currently starting up. Please try again in a few seconds.';
@@ -658,18 +676,14 @@ function App() {
       }
       
       setResponse(errorMessage);
-      
-      // Add error message to history
-      setHistory(prev => [...prev, {
+      fillPlaceholder(clientRequestId, {
         role: 'system',
         content: errorMessage,
         error: true
-      }]);
+      });
     } finally {
-      if (activeRequestRef.current === myRequestId) {
-        setIsLoading(false);
-        setProcessingNode(null);
-      }
+      finishRequest(clientRequestId);
+      if (pendingCountRef.current === 0) setProcessingNode(null);
     }
   };
   
@@ -686,32 +700,27 @@ function App() {
     }
   };
   
-  // Handle cancel operation
+  // Handle cancel operation: cancels EVERY in-flight request. Each rid is
+  // marked cancelled (so a late response is discarded), aborted client-side,
+  // and skipped server-side if still queued; its placeholder bubble becomes
+  // a cancellation notice.
   const handleCancel = () => {
     if (!isLoading) return;
-
-    // Invalidate the in-flight request so its response is DISCARDED when it
-    // eventually arrives (never attached to a later question), and abort the
-    // HTTP request client-side. The backend may still finish computing the
-    // abandoned answer; it just goes nowhere.
-    activeRequestRef.current = null;
-    if (abortRef.current) {
-      try { abortRef.current.abort(); } catch (e) { /* already settled */ }
-    }
-    // Tell the backend so a still-queued job is skipped, not computed.
-    if (activeClientIdRef.current) {
+    const rids = Array.from(controllersRef.current.keys());
+    rids.forEach((rid) => {
+      cancelledRef.current.add(rid);
+      const ctrl = controllersRef.current.get(rid);
+      try { ctrl && ctrl.abort(); } catch (e) { /* already settled */ }
       axios.post('http://127.0.0.1:5002/cancel',
-        { client_request_id: activeClientIdRef.current }).catch(() => {});
-    }
+        { client_request_id: rid }).catch(() => {});
+      fillPlaceholder(rid, {
+        role: 'system', content: 'Cancelled by user.', error: true
+      });
+    });
+    controllersRef.current.clear();
+    pendingCountRef.current = 0;
     setIsLoading(false);
     setProcessingNode(null);
-    
-    // Add cancellation message to history
-    setHistory(prev => [...prev, {
-      role: 'system',
-      content: 'Operation cancelled by user.',
-      error: true
-    }]);
   };
   
   // Handle clear history
@@ -958,7 +967,15 @@ function App() {
                 </div>
               ) : (
                   history.map((msg, index) => (
-                    <div key={index} className={`chat-bubble ${msg.role} ${msg.error ? 'error' : ''}`}>
+                    msg.pending ? (
+                      <div key={msg.rid || index} className="chat-bubble assistant loading">
+                        <span className="chat-meta">Twhyne{progressText && ` • ${progressText}`}</span>
+                        <div className="typing-indicator">
+                          <span></span><span></span><span></span>
+                        </div>
+                      </div>
+                    ) : (
+                    <div key={msg.rid || index} className={`chat-bubble ${msg.role} ${msg.error ? 'error' : ''}`}>
                       <span className="chat-meta">
                         {msg.role === 'user' ? 'You' : msg.role === 'system' ? 'System' : 'Twhyne'}
                       </span>
@@ -969,18 +986,9 @@ function App() {
                         <TrustStrip node={msg.node} gates={msg.gates} sources={msg.sources} evidence={msg.evidence} />
                       )}
                   </div>
+                  )
                 ))
               )}
-                {isLoading && (
-                  <div className="chat-bubble assistant loading">
-                    <span className="chat-meta">Twhyne {processingNode && `• ${processingNode} node`}{progressText && ` • ${progressText}`}</span>
-                    <div className="typing-indicator">
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                    </div>
-                  </div>
-                )}
               <div ref={messagesEndRef} />
             </div>
           </div>
@@ -1024,7 +1032,7 @@ function App() {
                 <button
                   className="process-button"
                   onClick={handleSubmit}
-                  disabled={isLoading || (!query.trim() && !file)}
+                  disabled={!query.trim() && !file}
                   title="Send your query to Twhyne"
                 >
                   {isLoading ? 'Processing...' : 'Send'}
