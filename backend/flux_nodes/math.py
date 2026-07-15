@@ -56,6 +56,14 @@ def _normalize(query: str) -> str:
     # "47 × 8,912" must become "47 * 8912" before parsing.
     s = (s.replace('×', '*').replace('÷', '/')
           .replace('−', '-').replace('·', '*'))
+    # Unicode superscripts: "x² + 5x + 6 = 0" is how phones and Word write
+    # exponents; SymPy raises SyntaxError on '²' (observed live). Map any
+    # run of superscript digits to **n, plus the common root/fraction glyphs.
+    _SUP = str.maketrans('⁰¹²³⁴⁵⁶⁷⁸⁹', '0123456789')
+    s = re.sub(r'[⁰¹²³⁴⁵⁶⁷⁸⁹]+',
+               lambda m: '**' + m.group(0).translate(_SUP), s)
+    s = s.replace('√', 'sqrt').replace('½', '(1/2)').replace('¼', '(1/4)') \
+         .replace('¾', '(3/4)').replace('π', 'pi')
     s = re.sub(r'(?<=\d),(?=\d)', '', s)
     # The classic trick: "divide 30 by half" means 30/0.5 (=60), not 30/2.
     # "half OF x" is multiplication and stays untouched.
@@ -144,6 +152,15 @@ class MathNode(FluxNode):
             if 'solve' in ql or ('=' in q and '==' not in q):
                 eq_str = re.sub(r'^\s*solve\s*(for\s+\w+\s*[:,]?)?\s*', '', ql).strip()
                 eq_str = re.sub(r'\bfor\s+\w+\s*$', '', eq_str).strip()
+                # Strip leading English ("the quadratic equation x**2+5x+6=0"
+                # parsed 't*h*e*...' as symbols - observed live). Drop
+                # multi-letter words from the front until the math starts:
+                # a token with a digit/operator/paren, or a single letter.
+                toks = eq_str.split()
+                while toks and re.fullmatch(r'[a-z]{2,}[:,]?', toks[0]):
+                    toks.pop(0)
+                if toks:
+                    eq_str = ' '.join(toks)
                 if '=' in eq_str:
                     lhs, rhs = eq_str.split('=', 1)
                     equation = Eq(parse_expr(lhs, transformations=_TRANSFORMS, local_dict=local),
