@@ -1567,6 +1567,62 @@ def create_app():
         r"\b(summari[sz]e|key points|main points|overview of|tl;?dr|"
         r"what (is|are) (this|the) (doc|document|pdf|file)s? about|"
         r"gist of)\b", re.I)
+    _SELF_Q_RE = re.compile(
+        r"\b(what are you|who are you|what is twhyne|what'?s twhyne|"
+        r"what can you do|what do you do|how (do|can) i use (you|twhyne|"
+        r"this)|how does (this|twhyne) work|help me get started|"
+        r"what are your (capabilities|features)|tell me about yourself)\b",
+        re.I)
+
+    def _self_description(role):
+        """Deterministic self-knowledge, composed from LIVE state - the
+        node registry, the actual knowledge bases, the running build. The
+        same principle as the clock: questions the orchestrator can answer
+        truthfully never reach a model that would improvise.
+        """
+        rm = get_rag_manager()
+        build = os.environ.get('TWHYNE_BUILD', 'dev')[:12]
+        lines = [
+            "I'm **Twhyne** — a local-first AI system that runs entirely on "
+            "this machine. Nothing you type or upload leaves your computer. "
+            f"(Build {build}.)",
+            "",
+            "Every answer is labeled with how it was produced — COMPUTED "
+            "(exact math), CITED (quoted from your documents), EXECUTED "
+            "(code that was run and tested), GENERATED (a language model), "
+            "REFUSED, or REDACTED — and every exchange is recorded in a "
+            "tamper-evident audit ledger.",
+            "",
+            "**What I can do right now:**",
+        ]
+        for n in node_registry.get_all_nodes():
+            status = "ready" if n.is_available else \
+                f"offline ({getattr(n, 'status_detail', 'unavailable')})"
+            lines.append(f"- **{n.name}** — {n.description} [{status}]")
+        ds = rm.list_datasets()
+        if ds:
+            names = ', '.join(f"\"{d['name']}\"" for d in ds[:6])
+            lines.append(f"- **Your knowledge bases ({len(ds)})**: {names}. "
+                         f"Ask \"tell me about <name>\" or any question "
+                         f"about their contents — answers cite sources.")
+        else:
+            lines.append("- **Knowledge bases**: none yet — attach a "
+                         "document in chat (📎) or use the Knowledge Bases "
+                         "panel; then ask questions and get cited answers.")
+        lines += [
+            "- **Timers** — \"set a timer for 10 minutes\", \"check my "
+            "timers\". Governed and audited.",
+            "- **Attachments** — drop in a PDF/text file and ask about it; "
+            "images go to the vision node.",
+            "",
+            "**Tips:** name a knowledge base to scope a question (\"in the "
+            "handbook, what...\"); follow-up questions stay on the document "
+            "you were just discussing; if I can't verify something, I say "
+            "so instead of guessing. Conversations are not saved when the "
+            "window closes — documents you want kept belong in a knowledge "
+            "base.",
+        ]
+        return '\n'.join(lines)
 
     @app.route('/query', methods=['POST', 'OPTIONS'])
     def submit_query():
@@ -1595,6 +1651,18 @@ def create_app():
                 return jsonify({'result': text, 'response': text,
                                 'node_id': 'clock', 'sources': [],
                                 'grounded': False, 'role': _role})
+            # SELF-KNOWLEDGE: "what are you / what can you do / how do I use
+            # you" answered deterministically from live state (registry,
+            # KBs, build) - never by a model improvising about a product it
+            # was not trained on.
+            if _SELF_Q_RE.search(prompt or ''):
+                text = _self_description(_role)
+                return jsonify({'result': text, 'response': text,
+                                'node_id': 'orchestrator', 'sources': [],
+                                'grounded': False, 'role': _role,
+                                'gates': {'verdict': 'answered',
+                                          'how': 'system'}})
+
             # Timer / reminder: handled by the tool/action policy engine
             # (layer 9 v0.1). A user-requested timer is NOT unprompted action
             # - consent happens at request time - so it is created under the
