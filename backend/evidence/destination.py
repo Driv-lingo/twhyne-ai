@@ -40,7 +40,7 @@ def validate_url(url: str, allowed_domains: List[str]) -> Tuple[bool, str]:
         return False, f"scheme {parts.scheme!r} not allowed (https only)"
     if "@" in (parts.netloc or ""):
         return False, "userinfo in URL not allowed"
-    host = (parts.hostname or "").lower()
+    host = (parts.hostname or "").lower().rstrip(".")  # drop trailing-dot FQDN
     if not host:
         return False, "no host"
     if parts.port not in (None, 443):
@@ -50,8 +50,15 @@ def validate_url(url: str, allowed_domains: List[str]) -> Tuple[bool, str]:
     # Reject IP-literal hosts outright - an approved fetch names a domain.
     if _is_ip_literal(host):
         return False, "IP-literal host not allowed (name a domain)"
-    if not any(host == d or host.endswith("." + d) for d in allowed_domains):
-        return False, f"host {host!r} not in allowlist"
+    # ALLOWLIST SEMANTICS (explicit): exact host OR a single "www." prefix
+    # only - NOT arbitrary subdomains. So "visitdubai.com" permits
+    # "www.visitdubai.com" but NOT "evil.visitdubai.com" (a subdomain an
+    # attacker who found a subdomain-takeover could abuse). Suffix tricks
+    # like "visitdubai.com.attacker.example" fail both checks.
+    allowed = {d.lower().rstrip(".") for d in allowed_domains}
+    if not (host in allowed or (host.startswith("www.")
+                                and host[4:] in allowed)):
+        return False, f"host {host!r} not in allowlist (exact host or www. only)"
     return True, host
 
 

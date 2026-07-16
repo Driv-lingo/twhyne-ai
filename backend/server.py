@@ -287,7 +287,7 @@ code{background:#0e0b16;padding:2px 6px;border-radius:4px;font-size:12px;color:v
 <div class="msg" id="pmsg"></div></div>
 
 <div class="card"><h2>Live evidence sources</h2>
-<div class="sub" style="margin:0 0 8px">Dev-grade, <b>off by default</b>. When enabled, Twhyne may fetch from these EXACT domains only (official public pages) to check time-sensitive claims. One domain per line, e.g. <code>visitdubai.com</code>. Not the isolated-worker architecture &mdash; single-process; do not enable for sensitive-data deployments yet.</div>
+<div class="sub" style="margin:0 0 8px"><b>Development-only in-process prototype. Off by default.</b> When enabled, the Twhyne core itself makes outbound HTTPS to these EXACT domains (plus their <code>www.</code>) &mdash; official public pages only. This is NOT the isolated-worker Evidence Broker; hostile content enters the core process. Do NOT enable for sensitive-data deployments, and it is not wired into answers yet. One domain per line, e.g. <code>visitdubai.com</code>.</div>
 <label><input type="checkbox" id="evEnabled"> Enable live evidence fetch</label>
 <textarea id="evDomains" spellcheck="false" placeholder="visitdubai.com&#10;gov.uk" style="min-height:80px"></textarea>
 <div class="row"><button class="ghost" onclick="loadEvidence()">Reload</button><button onclick="saveEvidence()">Save sources</button></div>
@@ -2750,22 +2750,41 @@ def create_app():
         jid = _uuid.uuid4().hex[:12]
         raw, outcome, detail = fetch_evidence(
             jid, url, domains, production_transport())
-        _audit_append({'role': 'operator', 'prompt': f'evidence.fetch:{url}',
+        # Audit privacy: log the normalized domain + path, NOT the query
+        # string (tokens/search terms) - the job id links to the full record.
+        from urllib.parse import urlsplit as _us
+        _p = _us(url)
+        _safe = f"{_p.hostname or ''}{_p.path or ''}"
+        _audit_append({'role': 'operator', 'prompt': f'evidence.fetch:{jid}',
                        'node_id': 'evidence-fetch', 'verdict': outcome,
-                       'gates': {'action': 'evidence.fetch', 'url': url,
-                                 'outcome': outcome, 'detail': detail}})
+                       'gates': {'action': 'evidence.fetch', 'domain': _p.hostname,
+                                 'path': _p.path, 'outcome': outcome,
+                                 'detail': detail}})
+        _warn = ('IN-PROCESS dev prototype: this fetch ran inside the Twhyne '
+                 'core, not an isolated service. Not for sensitive-data use.')
         if raw is None:
-            return jsonify({'outcome': outcome, 'detail': detail}), 200
-        # Return references + a bounded text preview, never the raw bytes blob.
+            return jsonify({'outcome': outcome, 'detail': detail,
+                            'warning': _warn}), 200
+        # Retain the EXACT bounded body so a future validator has the bytes
+        # the hash covers (a preview + hash alone can't prove a passage).
+        try:
+            store = _AUDIT_PATH.parent / 'evidence_store'
+            store.mkdir(parents=True, exist_ok=True)
+            (store / f"{raw.decoded_hash.replace(':', '_')}.bin").write_bytes(
+                raw.decoded_bytes)
+        except Exception as e:
+            logger.error(f"evidence store write failed: {e}")
         text = raw.decoded_bytes.decode('utf-8', errors='ignore')
         return jsonify({'outcome': outcome, 'job_id': jid,
                         'final_url': raw.final_url,
                         'transport_hash': raw.transport_hash,
                         'decoded_hash': raw.decoded_hash,
+                        'raw_stored': True,
                         'cert_fingerprint': raw.cert_fingerprint,
                         'retrieved_at': raw.retrieved_at,
                         'bytes': len(raw.transport_bytes),
-                        'preview': text[:2000]}), 200
+                        'preview': text[:2000],
+                        'warning': _warn}), 200
 
     @app.route('/api/timers', methods=['GET', 'POST'])
     def timers_collection():

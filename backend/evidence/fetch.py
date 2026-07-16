@@ -1,17 +1,25 @@
-"""Live-fetch v0: the retrieval logic, with an INJECTABLE transport.
+"""Live-fetch v0: DEVELOPMENT-ONLY IN-PROCESS retrieval prototype.
+
+HONEST SCOPE (read before shipping this anywhere real):
+  * The production fetch executes INSIDE the Twhyne core process/container.
+    That means when it is enabled, the core has an outbound route and
+    hostile network content enters the core process. This is NOT the
+    isolated gateway/worker topology from the roadmap; it is an in-process
+    prototype. "Twhyne does not access the internet" is false while this is
+    enabled. Do not enable it for sensitive-data deployments, and do not
+    wire it into the planner, until the fetch runs in a separately
+    networked service (Phase 0B proper).
+  * DNS rebinding is NOT fully mitigated. validate_resolved_ip runs on the
+    address we resolve, but urllib re-resolves at connect time (a TOCTOU
+    gap). Real mitigation requires connecting to the exact validated IP
+    while preserving the original hostname for TLS SNI + cert check - not
+    done here. Treated as defense-in-depth, not a guarantee.
 
 The security-relevant logic (allowlist, redirect revalidation, private-IP
-rejection, size/content limits, raw capture) lives here and is identical in
-CI and production. Only the TRANSPORT differs:
-  - production: real HTTPS via urllib, resolving + IP-validating itself;
-  - CI/tests: a fixture map, so the complete path (redirects, private-IP
-    targets, oversized bodies, off-allowlist domains, timeouts, malformed
-    responses) is exercised without touching the public internet.
-
-This is DEV-GRADE, single-process, default-OFF. It is not the isolated
-worker/gateway/signer topology from the roadmap - it is the smallest honest
-thing an operator can turn on for allowlisted official domains. No planner
-integration; returns raw evidence + an explicit outcome state.
+rejection, size/content limits, raw capture) is identical in CI and
+production; only the TRANSPORT differs (real HTTPS vs test fixtures). The
+fixture transport is a TEST-TIME argument only - the HTTP endpoint hardcodes
+the production transport and never accepts a transport from a request.
 """
 from __future__ import annotations
 
@@ -127,10 +135,16 @@ def production_transport(timeout_s: float = 15.0,
             infos = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
         except Exception as e:
             raise RuntimeError(f"DNS resolution failed: {e}")
+        # Validate EVERY resolved address (an attacker controlling DNS could
+        # return one public + one private). NOTE: urllib re-resolves at
+        # connect time, so this is defense-in-depth, NOT a rebinding
+        # guarantee - see the module docstring. Real fix = connect to a
+        # pinned validated IP with SNI preserved (Phase 0B proper).
         resolved = infos[0][4][0] if infos else ""
-        ipok, ipreason = validate_resolved_ip(resolved)
-        if not ipok:
-            raise RuntimeError(f"resolved address rejected: {ipreason}")
+        for info in infos:
+            ipok, ipreason = validate_resolved_ip(info[4][0])
+            if not ipok:
+                raise RuntimeError(f"resolved address rejected: {ipreason}")
         ctx = ssl.create_default_context()
         req = urllib.request.Request(url, method="GET",
                                      headers={"User-Agent": "twhyne-fetch/0"})

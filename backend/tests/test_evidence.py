@@ -150,8 +150,13 @@ def test_booking_claim_with_explicit_unsupported_allows_finalization():
 def test_https_only_and_allowlist():
     ok, _ = validate_url("https://visitdubai.com/x", ["visitdubai.com"])
     assert ok
+    assert validate_url("https://www.visitdubai.com/x", ["visitdubai.com"])[0]
     assert not validate_url("http://visitdubai.com/x", ["visitdubai.com"])[0]
     assert not validate_url("https://evil.com/x", ["visitdubai.com"])[0]
+    # arbitrary subdomains and suffix tricks are NOT allowed (exact host + www)
+    assert not validate_url("https://evil.visitdubai.com/x", ["visitdubai.com"])[0]
+    assert not validate_url("https://visitdubai.com.attacker.example/x",
+                            ["visitdubai.com"])[0]
 
 
 def test_ip_literal_and_userinfo_and_port_rejected():
