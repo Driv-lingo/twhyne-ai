@@ -77,3 +77,4 @@ htmlcov/
 *.tmp
 *.bak
 nohup.out
+benchmarks/results.json
