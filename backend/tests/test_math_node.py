@@ -52,9 +52,12 @@ def test_solve_equation():
 
 def test_filler_words_do_not_become_symbols():
     # Regression: "Compute" once parsed as C*o*m*p*u*t*e via implicit
-    # multiplication and produced symbolic garbage.
+    # multiplication and produced symbolic garbage. Assert on the VALUE, not
+    # the wrapper - answers ship as LaTeX ($$...$$) since the KaTeX change,
+    # and symbolic garbage would contain letters, not just the number.
     out = _node()._try_sympy("Compute 987654 + 123456.")
-    assert out == "1111110"
+    assert out is not None and "1111110" in out
+    assert not any(c.isalpha() for c in out.replace("approx", ""))
 
 
 def test_extraction_helpers():
