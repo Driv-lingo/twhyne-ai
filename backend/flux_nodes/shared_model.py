@@ -65,6 +65,17 @@ def _fast_local_copy(path: str):
         return str(path), False
 
 
+def _usable_cores():
+    """Cores actually available to this process (respects cgroup/affinity
+    limits Docker applies). This is the right n_threads for a container."""
+    try:
+        if hasattr(os, 'sched_getaffinity'):
+            return max(1, len(os.sched_getaffinity(0)))
+    except Exception:
+        pass
+    return max(1, os.cpu_count() or 2)
+
+
 def _physical_cores():
     """Physical core count for n_threads. Hyperthreads HURT memory-
     bandwidth-bound inference, so all-logical-cores oversubscribed - but
@@ -134,12 +145,31 @@ def get_shared_model(model_path, **overrides):
             # buffer: Cannot allocate memory", 0.9 tok/s observed live).
             # Now OPT-IN via TWHYNE_MLOCK=1 for machines with headroom.
             use_mlock=os.environ.get('TWHYNE_MLOCK', '0') in ('1', 'true'),
+            # THREADS: use all USABLE cores by default. Inside Docker
+            # Desktop's VM the vCPUs are the whole resource - there is no
+            # host-hyperthread distinction to avoid, so the bare-metal
+            # "physical cores only" halving just wasted half (a likely cause
+            # of 0.9 tok/s). Override with TWHYNE_THREADS.
             n_threads=int(os.environ.get('TWHYNE_THREADS', '0') or 0)
-            or max(2, _physical_cores()),
+            or max(2, _usable_cores()),
             n_gpu_layers=int(os.environ.get('TWHYNE_GPU_LAYERS', '0')),
             verbose=False,
         )
         params.update(overrides)
+        # PERF DIAGNOSTIC: the #1 cause of slow CPU generation on Docker
+        # Desktop is too few CPUs allocated to the VM. Log what the container
+        # actually sees vs. the threads we chose, so "0.9 tok/s" becomes
+        # "container has 2 CPUs" - actionable (raise Docker Desktop CPUs).
+        try:
+            import os as _os
+            aff = len(_os.sched_getaffinity(0)) if hasattr(_os, 'sched_getaffinity') else _os.cpu_count()
+            logger.info(f"CPU: container sees {_os.cpu_count()} logical / "
+                        f"{aff} usable cores; using n_threads={params.get('n_threads')}, "
+                        f"mlock={params.get('use_mlock')}, mmap={params.get('use_mmap')}. "
+                        f"If tok/s is low, raise Docker Desktop CPUs "
+                        f"(Settings > Resources) to at least host physical cores.")
+        except Exception:
+            pass
         logger.info(f"Loading shared model into memory: {load_path}")
         model = Llama(model_path=load_path, **params)
         _cache[key] = model
