@@ -28,15 +28,15 @@ const ConversationManager = ({
   const [editingName, setEditingName] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Load conversations from localStorage on mount
+  // Load conversations from the kernel store on mount
   useEffect(() => {
     loadConversations();
   }, []);
 
-  // AUTOSAVE: every conversation persists on its own - locally, in this
-  // browser's storage, nothing leaves the machine. The first completed
-  // exchange creates the entry (named from the first question); each new
-  // message updates it. Manual Save/rename/export remain for curation.
+  // AUTOSAVE: every conversation persists on its own - to the kernel's
+  // store on this machine (~/.twhyne volume), never a cloud. The first
+  // completed exchange creates the entry (named from the first question);
+  // each new message updates it. Manual rename/export remain for curation.
   useEffect(() => {
     if (!currentHistory || currentHistory.length < 2) return;
     if (currentHistory.some(m => m.pending)) return;  // wait for answers
@@ -61,14 +61,10 @@ const ConversationManager = ({
           list = [...prev, conv];
           if (onAutoSaved) onAutoSaved(conv);
         }
-        // Bound growth: keep the 50 most recent (localStorage is ~5MB).
-        if (list.length > 50) {
-          list = [...list].sort((a, b) =>
-            new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 50);
-        }
-        try {
-          localStorage.setItem('twhyne_conversations', JSON.stringify(list));
-        } catch (e) { /* storage full: keep in-memory list */ }
+        const target = list.find(c =>
+          c.id === (currentConversation && currentConversation.id)) ||
+          list[list.length - 1];
+        if (target) persist(target);
         return list;
       });
     }, 800);
@@ -76,17 +72,47 @@ const ConversationManager = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentHistory, currentConversation]);
 
-  const loadConversations = () => {
-    const saved = localStorage.getItem('twhyne_conversations');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setConversations(parsed);
-      } catch (e) {
-        console.error('Error loading conversations:', e);
-        setConversations([]);
+  // Kernel-owned persistence: conversations live server-side in the same
+  // mounted volume as knowledge bases (~/.twhyne) - they survive browsers,
+  // restarts and updates, and never touch a cloud. One-time migration
+  // carries any old localStorage chats across.
+  const API = 'http://127.0.0.1:5002/api/conversations';
+  const loadConversations = async () => {
+    try {
+      const r = await fetch(API);
+      const d = await r.json();
+      let list = d.conversations || [];
+      const saved = localStorage.getItem('twhyne_conversations');
+      if (saved && !localStorage.getItem('twhyne_conversations_migrated')) {
+        try {
+          const old = JSON.parse(saved) || [];
+          for (const c of old) {
+            if (!list.some(x => x.id === c.id)) {
+              await fetch(API, { method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(c) });
+            }
+          }
+          localStorage.setItem('twhyne_conversations_migrated', '1');
+          const r2 = await fetch(API);
+          list = (await r2.json()).conversations || list;
+        } catch (e) { /* migration is best-effort */ }
       }
+      setConversations(list);
+    } catch (e) {
+      console.error('Error loading conversations:', e);
     }
+  };
+  const persist = async (conv) => {
+    try {
+      const r = await fetch(API, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(conv) });
+      return await r.json();
+    } catch (e) { return null; }
+  };
+  const removeRemote = (id) => {
+    fetch(`${API}/${id}`, { method: 'DELETE' }).catch(() => {});
   };
 
   const saveConversation = (name = null) => {
@@ -108,8 +134,8 @@ const ConversationManager = ({
 
     const updated = [...conversations, newConversation];
     setConversations(updated);
-    localStorage.setItem('twhyne_conversations', JSON.stringify(updated));
-    
+    persist(newConversation);
+
     alert(`Conversation "${conversationName}" saved successfully!`);
   };
 
@@ -126,7 +152,8 @@ const ConversationManager = ({
     );
     
     setConversations(updated);
-    localStorage.setItem('twhyne_conversations', JSON.stringify(updated));
+    const cur = updated.find(c => c.id === currentConversation.id);
+    if (cur) persist(cur);
   };
 
   const deleteConversation = (id) => {
@@ -134,7 +161,7 @@ const ConversationManager = ({
 
     const updated = conversations.filter(conv => conv.id !== id);
     setConversations(updated);
-    localStorage.setItem('twhyne_conversations', JSON.stringify(updated));
+    removeRemote(id);
     
     if (currentConversation?.id === id) {
       onNewConversation();
@@ -148,7 +175,8 @@ const ConversationManager = ({
         c.id === id ? { ...c, name: editingName.trim() } : c
       );
       setConversations(updated);
-      localStorage.setItem('twhyne_conversations', JSON.stringify(updated));
+      const ren = updated.find(c => c.id === id);
+      if (ren) persist(ren);
     }
     setEditingId(null);
     setEditingName('');
@@ -222,7 +250,7 @@ const ConversationManager = ({
 
         const updated = [...conversations, ...processed];
         setConversations(updated);
-        localStorage.setItem('twhyne_conversations', JSON.stringify(updated));
+        processed.forEach(persist);
         
         alert(`Successfully imported ${processed.length} conversation(s)`);
       } catch (error) {

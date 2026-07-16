@@ -1625,10 +1625,10 @@ def create_app():
             "**Tips:** name a knowledge base to scope a question (\"in the "
             "handbook, what...\"); follow-up questions stay on the document "
             "you were just discussing; if I can't verify something, I say "
-            "so instead of guessing. Conversations save automatically — "
-            "locally in your browser, never to a cloud (reopen them from "
-            "the 💬 panel). Documents you want askable belong in a "
-            "knowledge base.",
+            "so instead of guessing. Conversations save automatically on "
+            "this machine — never to a cloud — and survive restarts "
+            "(reopen them from the 💬 panel). Documents you want askable "
+            "belong in a knowledge base.",
         ]
         return '\n'.join(lines)
 
@@ -2832,6 +2832,73 @@ def create_app():
     def version_info():
         """Which build is this? Ends the 'am I on the new image?' guesswork."""
         return jsonify({'build': os.environ.get('TWHYNE_BUILD', 'dev')[:12]})
+
+    # ---- Conversations: kernel-owned persistence ----------------------
+    # Chats live in the same mounted volume as knowledge bases - they
+    # survive browsers, restarts and image updates, back up with the rest
+    # of ~/.twhyne, and are visible to the kernel (browser localStorage
+    # was fragile and invisible). Capped; deletion is real deletion.
+    _CONV_PATH = _AUDIT_PATH.parent / 'conversations.json'
+    _CONV_LOCK = __import__('threading').Lock()
+
+    def _conv_load():
+        import json as _json
+        try:
+            if _CONV_PATH.exists():
+                return _json.loads(_CONV_PATH.read_text()) or []
+        except Exception as e:
+            logger.error(f"conversations load failed: {e}")
+        return []
+
+    def _conv_save(convs):
+        import json as _json
+        try:
+            _CONV_PATH.parent.mkdir(parents=True, exist_ok=True)
+            _CONV_PATH.write_text(_json.dumps(convs))
+        except Exception as e:
+            logger.error(f"conversations save failed: {e}")
+
+    @app.route('/api/conversations', methods=['GET', 'POST'])
+    def conversations_collection():
+        import uuid as _uuid
+        if request.method == 'GET':
+            return jsonify({'conversations': _conv_load()})
+        body = request.get_json(silent=True) or {}
+        with _CONV_LOCK:
+            convs = _conv_load()
+            cid = str(body.get('id') or '')
+            existing = next((c for c in convs if c.get('id') == cid), None)
+            if existing:
+                if 'messages' in body:
+                    existing['messages'] = body['messages']
+                    existing['messageCount'] = len(body['messages'])
+                if body.get('name'):
+                    existing['name'] = str(body['name'])[:80]
+                existing['timestamp'] = __import__('datetime').datetime.now().isoformat()
+                conv = existing
+            else:
+                conv = {'id': cid or _uuid.uuid4().hex[:12],
+                        'name': str(body.get('name') or 'Conversation')[:80],
+                        'messages': body.get('messages') or [],
+                        'messageCount': len(body.get('messages') or []),
+                        'timestamp': __import__('datetime').datetime.now().isoformat()}
+                convs.append(conv)
+            convs.sort(key=lambda c: c.get('timestamp') or '', reverse=True)
+            convs = convs[:100]
+            _conv_save(convs)
+        return jsonify({'conversation': {k: v for k, v in conv.items()
+                                         if k != 'messages'},
+                        'id': conv['id']}), 200
+
+    @app.route('/api/conversations/<cid>', methods=['DELETE'])
+    def conversations_delete(cid):
+        with _CONV_LOCK:
+            convs = _conv_load()
+            keep = [c for c in convs if c.get('id') != cid]
+            if len(keep) == len(convs):
+                return jsonify({'error': 'Not found'}), 404
+            _conv_save(keep)
+        return jsonify({'success': True})
 
     @app.route('/api/rag/status', methods=['GET'])
     def rag_status():
