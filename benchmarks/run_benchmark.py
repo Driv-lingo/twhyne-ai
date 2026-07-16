@@ -271,11 +271,32 @@ def run_cancellation_scenario(base):
 
 # ---- main ------------------------------------------------------------------
 
+def _print_summary(cat_stats):
+    print("\n" + "=" * 60)
+    print(" SUMMARY")
+    print("=" * 60)
+    tot_p = tot_t = 0
+    for cat, st in cat_stats.items():
+        tot_p += st["pass"]; tot_t += st["total"]
+        line = (f"  {cat:14s} {st['pass']}/{st['total']} strict"
+                f"   latency {st.get('lat', st['pass'])}/{st['total']}")
+        if st["cloud_total"]:
+            line += f"   vs cloud {st['cloud_pass']}/{st['cloud_total']}"
+        print(line)
+    print("-" * 60)
+    print(f"  {'TOTAL':14s} {tot_p}/{tot_t} local  ({round(100*tot_p/max(tot_t,1))}%)")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base-url", default=os.environ.get("TWHYNE_URL", "http://localhost:5002"))
     ap.add_argument("--cloud", choices=["openai", "anthropic"], default=None,
                     help="also run tasks against a cloud model for comparison")
+    ap.add_argument("--categories", default=None,
+                    help="comma-separated category subset (e.g. 'math'). "
+                         "Exit code 1 on ANY failure - this is the CI "
+                         "regression-gate mode: the deterministic slice runs "
+                         "on every image build without model downloads.")
     args = ap.parse_args()
     base = args.base_url.rstrip("/")
 
@@ -289,6 +310,14 @@ def main():
     # encoding matters: Windows defaults to cp1252, which turns the unicode
     # multiplication sign into mojibake ("47 Ã— 8,912") and broke math routing.
     tasks = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
+    if args.categories:
+        wanted = {c.strip() for c in args.categories.split(",") if c.strip()}
+        unknown = wanted - set(tasks)
+        if unknown:
+            print(f"ERROR: unknown categories {sorted(unknown)}; "
+                  f"available: {sorted(tasks)}")
+            sys.exit(2)
+        tasks = {k: v for k, v in tasks.items() if k in wanted}
     dataset_id = None
     if any(t.get("use_rag") for cat in tasks.values() for t in cat):
         print("Preparing benchmark RAG corpus...")
@@ -409,6 +438,15 @@ def main():
                             "evidence": getattr(ask_twhyne, "last_evidence", None)})
 
     # Scripted scenario: cancellation must not poison the next answer.
+    # (Skipped in --categories CI mode: it exercises the generation queue,
+    # which needs real models.)
+    if args.categories:
+        _print_summary(cat_stats)
+        out = HERE / "results.json"
+        out.write_text(json.dumps(results, indent=2))
+        failed = sum(st["total"] - st["pass"] for st in cat_stats.values())
+        print(f"\nDetailed results written to {out}")
+        sys.exit(1 if failed else 0)
     t0 = time.time()
     ok, reason = run_cancellation_scenario(base)
     st = cat_stats.setdefault("scenarios", {"pass": 0, "total": 0, "lat": 0,
@@ -422,19 +460,7 @@ def main():
                     "local_pass": ok, "cloud_pass": None, "reason": reason,
                     "elapsed_s": round(time.time()-t0, 1), "answer": "", "sources": []})
 
-    print("\n" + "=" * 60)
-    print(" SUMMARY")
-    print("=" * 60)
-    tot_p = tot_t = 0
-    for cat, st in cat_stats.items():
-        tot_p += st["pass"]; tot_t += st["total"]
-        line = (f"  {cat:14s} {st['pass']}/{st['total']} strict"
-                f"   latency {st.get('lat', st['pass'])}/{st['total']}")
-        if st["cloud_total"]:
-            line += f"   vs cloud {st['cloud_pass']}/{st['cloud_total']}"
-        print(line)
-    print("-" * 60)
-    print(f"  {'TOTAL':14s} {tot_p}/{tot_t} local  ({round(100*tot_p/max(tot_t,1))}%)")
+    _print_summary(cat_stats)
 
     out = HERE / "results.json"
     out.write_text(json.dumps(results, indent=2))

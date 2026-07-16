@@ -79,6 +79,20 @@ jobs:
           assert len(e) >= 128, 'embedding too short'
           print('real inference OK, dim', len(e))"
 
+      - name: Regression gate - deterministic benchmark slice (120 math tasks)
+        run: |
+          docker run -d --name bench --entrypoint sh -p 5002:5002 \
+            twhyne/twhyne:candidate -c \
+            'cd /app/backend && if [ -f server.pyc ]; then exec python3 server.pyc; else exec python3 server.py; fi'
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:5002/status > /dev/null; then break; fi
+            sleep 2
+          done
+          # --categories mode exits 1 on ANY failure: the benchmark slice
+          # that needs no models now gates every image automatically.
+          python3 benchmarks/run_benchmark.py --base-url http://localhost:5002 --categories math
+          docker rm -f bench
+
       - name: Push image (only after all smoke tests pass)
         run: |
           docker tag twhyne/twhyne:candidate twhyne/twhyne:cpu
