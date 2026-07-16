@@ -49,6 +49,7 @@ def main():
 
     # 1) Standalone unit suites
     run_file_suite("tests/test_evidence.py", "Evidence broker suite (21 tests)")
+    run_file_suite("tests/test_fetch.py", "Live-fetch v0 suite (12 tests)")
     run_file_suite("tests/test_math_node.py", "Math node suite")
 
     # 2) Deterministic logic smoke checks (import the real code paths)

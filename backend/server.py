@@ -286,6 +286,13 @@ code{background:#0e0b16;padding:2px 6px;border-radius:4px;font-size:12px;color:v
 <div class="row"><button class="ghost" onclick="loadPolicy()">Reload</button><button onclick="savePolicy()">Save policy</button></div>
 <div class="msg" id="pmsg"></div></div>
 
+<div class="card"><h2>Live evidence sources</h2>
+<div class="sub" style="margin:0 0 8px">Dev-grade, <b>off by default</b>. When enabled, Twhyne may fetch from these EXACT domains only (official public pages) to check time-sensitive claims. One domain per line, e.g. <code>visitdubai.com</code>. Not the isolated-worker architecture &mdash; single-process; do not enable for sensitive-data deployments yet.</div>
+<label><input type="checkbox" id="evEnabled"> Enable live evidence fetch</label>
+<textarea id="evDomains" spellcheck="false" placeholder="visitdubai.com&#10;gov.uk" style="min-height:80px"></textarea>
+<div class="row"><button class="ghost" onclick="loadEvidence()">Reload</button><button onclick="saveEvidence()">Save sources</button></div>
+<div class="msg" id="evmsg"></div></div>
+
 <div class="card"><h2>Models &amp; nodes</h2>
 <div class="sub" style="margin:0 0 10px">Import a Hugging Face GGUF as a live expert node, set which roles may invoke it, and manage existing nodes. Imports register live &mdash; no restart.</div>
 <div class="row">
@@ -376,7 +383,16 @@ async function delNode(nid){if(!confirm('Remove node '+nid+'?'))return;
 try{var r=await fetch('/api/models/'+encodeURIComponent(nid),{method:'DELETE',headers:hdrs()});
 var d=await r.json();if(r.ok){msg('mmsg','Removed '+nid,'ok');loadNodes();}else{msg('mmsg',d.error||'Failed','err');}}
 catch(e){msg('mmsg','Error: '+e,'err');}}
-loadPolicy();loadNodes();
+async function loadEvidence(){try{var r=await fetch('/api/evidence/policy');var d=await r.json();
+document.getElementById('evEnabled').checked=!!d.live_fetch_enabled;
+document.getElementById('evDomains').value=(d.allowed_domains||[]).join('\n');
+}catch(e){msg('evmsg','Load failed: '+e,'err');}}
+async function saveEvidence(){try{
+var doms=document.getElementById('evDomains').value.split('\n').map(function(s){return s.trim();}).filter(Boolean);
+var r=await fetch('/api/evidence/policy',{method:'PUT',headers:hdrs(),body:JSON.stringify({live_fetch_enabled:document.getElementById('evEnabled').checked,allowed_domains:doms})});
+var d=await r.json();if(r.ok){msg('evmsg','Saved. Enabled: '+d.live_fetch_enabled+', domains: '+(d.allowed_domains||[]).length,'ok');loadEvidence();}else{msg('evmsg',d.error||'Failed','err');}
+}catch(e){msg('evmsg','Error: '+e,'err');}}
+loadPolicy();loadNodes();loadEvidence();
 </script></body></html>"""
 
 
@@ -2671,6 +2687,86 @@ def create_app():
                         'error': err}), (401 if err else 200)
 
     # ---- Timers: the layer-9 v0.1 surface ----------------------------
+    # ---- Live evidence fetch v0 (dev-grade, default-OFF, operator-gated) ---
+    # Real outbound HTTPS to an ADMIN-ALLOWLISTED set of domains, using the
+    # tested SSRF/redirect guards. NOT wired into the planner. Off unless an
+    # operator both enables it and adds domains. Single-process dev-grade
+    # isolation - NOT the roadmap's isolated worker/gateway/signer topology.
+    def _evidence_policy():
+        pol = get_rag_manager().get_permissions().get('evidence') or {}
+        return (bool(pol.get('live_fetch_enabled')),
+                [str(d).lower() for d in (pol.get('allowed_domains') or [])])
+
+    @app.route('/api/evidence/policy', methods=['GET', 'PUT'])
+    def evidence_policy():
+        """Admin: read/set the live-fetch allowlist + enable flag."""
+        rm = get_rag_manager()
+        if request.method == 'GET':
+            enabled, domains = _evidence_policy()
+            return jsonify({'live_fetch_enabled': enabled,
+                            'allowed_domains': domains})
+        deny = _require_admin()
+        if deny:
+            return deny
+        body = request.get_json(silent=True) or {}
+        pol = dict(rm.get_permissions())
+        ev = dict(pol.get('evidence') or {})
+        if 'live_fetch_enabled' in body:
+            ev['live_fetch_enabled'] = bool(body['live_fetch_enabled'])
+        if 'allowed_domains' in body:
+            doms = body['allowed_domains']
+            if not isinstance(doms, list):
+                return jsonify({'error': 'allowed_domains must be a list'}), 400
+            # store bare registrable domains, lowercased, no scheme/path
+            clean = []
+            for d in doms:
+                d = str(d).strip().lower()
+                d = d.split('://')[-1].split('/')[0]
+                if d and '.' in d and ' ' not in d:
+                    clean.append(d)
+            ev['allowed_domains'] = sorted(set(clean))
+        pol['evidence'] = ev
+        rm.set_permissions(pol)
+        return jsonify({'success': True,
+                        'live_fetch_enabled': bool(ev.get('live_fetch_enabled')),
+                        'allowed_domains': ev.get('allowed_domains', [])})
+
+    @app.route('/api/evidence/fetch', methods=['POST'])
+    def evidence_fetch():
+        """Fetch one allowlisted URL and return a raw evidence record or an
+        explicit failure state. Refuses unless live fetch is enabled AND the
+        domain is allowlisted. Every attempt is audited."""
+        enabled, domains = _evidence_policy()
+        body = request.get_json(silent=True) or {}
+        url = str(body.get('url') or '').strip()
+        if not enabled:
+            return jsonify({'outcome': 'POLICY_DENIED',
+                            'detail': 'live fetch is disabled; an operator must '
+                                      'enable it in the admin policy'}), 403
+        if not url:
+            return jsonify({'outcome': 'POLICY_DENIED', 'detail': 'no url'}), 400
+        from evidence.fetch import fetch_evidence, production_transport
+        import uuid as _uuid
+        jid = _uuid.uuid4().hex[:12]
+        raw, outcome, detail = fetch_evidence(
+            jid, url, domains, production_transport())
+        _audit_append({'role': 'operator', 'prompt': f'evidence.fetch:{url}',
+                       'node_id': 'evidence-fetch', 'verdict': outcome,
+                       'gates': {'action': 'evidence.fetch', 'url': url,
+                                 'outcome': outcome, 'detail': detail}})
+        if raw is None:
+            return jsonify({'outcome': outcome, 'detail': detail}), 200
+        # Return references + a bounded text preview, never the raw bytes blob.
+        text = raw.decoded_bytes.decode('utf-8', errors='ignore')
+        return jsonify({'outcome': outcome, 'job_id': jid,
+                        'final_url': raw.final_url,
+                        'transport_hash': raw.transport_hash,
+                        'decoded_hash': raw.decoded_hash,
+                        'cert_fingerprint': raw.cert_fingerprint,
+                        'retrieved_at': raw.retrieved_at,
+                        'bytes': len(raw.transport_bytes),
+                        'preview': text[:2000]}), 200
+
     @app.route('/api/timers', methods=['GET', 'POST'])
     def timers_collection():
         from identity import resolve_identity
