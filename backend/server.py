@@ -1412,6 +1412,43 @@ def create_app():
                 sources.append(r['source'])
         return context, sources, top_score, kept
 
+    _NUM_WORDS = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+                  'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+                  'eleven': 11, 'twelve': 12}
+
+    def _arith_consistency(prompt, answer):
+        """Narrow quantity-conservation check: when a question states counts
+        of a thing ('sally has 2 apples, johnny has 3') and a GENERATED
+        answer asserts MORE of that thing than exist ('a total of seven
+        apples'), that is a detectable contradiction - the cheapest member
+        of the hallucination class the kernel exists to catch. Returns
+        (unit, stated_total, claimed) or None. Deliberately conservative:
+        only fires on multiple stated counts of the same unit and a claim
+        exceeding their sum.
+        """
+        try:
+            pairs = re.findall(r'\b(?:has|have|had|holds?|gets?|with)\s+'
+                               r'(\d+|' + '|'.join(_NUM_WORDS) + r')\s+'
+                               r'([a-z]{3,})', (prompt or '').lower())
+            totals = {}
+            for n, unit in pairs:
+                v = _NUM_WORDS.get(n) or (int(n) if n.isdigit() else 0)
+                totals.setdefault(unit, []).append(v)
+            for unit, vals in totals.items():
+                if len(vals) < 2:
+                    continue
+                avail = sum(vals)
+                for m in re.finditer(r'\b(\d+|' + '|'.join(_NUM_WORDS) +
+                                     r')\s+' + re.escape(unit),
+                                     (answer or '').lower()):
+                    w = m.group(1)
+                    claimed = _NUM_WORDS.get(w) or (int(w) if w.isdigit() else 0)
+                    if claimed > avail:
+                        return unit, avail, claimed
+        except Exception:
+            pass
+        return None
+
     @app.after_request
     def _redact_response(resp):
         # Single choke point: every /query answer passes through here,
@@ -1435,6 +1472,29 @@ def create_app():
                     gone = getattr(_pg, 'stale_followup', None)
                     if gone and gone not in stale:
                         stale.append(gone)
+                    # Quantity-conservation check on ungrounded answers:
+                    # annotate (never block) when the answer asserts more of
+                    # a counted thing than the question supplied.
+                    if (not data.get('grounded')
+                            and isinstance(data.get('response'), str)):
+                        req_b = request.get_json(silent=True) or {}
+                        bad = _arith_consistency(req_b.get('prompt', ''),
+                                                 data['response'])
+                        if bad:
+                            unit, avail, claimed = bad
+                            note = (f"\n\n⚠ Consistency check: your question "
+                                    f"states {avail} {unit} in total, but the "
+                                    f"answer above refers to {claimed} {unit}. "
+                                    f"The arithmetic in this answer is "
+                                    f"unreliable.")
+                            for k in ('result', 'response'):
+                                if isinstance(data.get(k), str):
+                                    data[k] = data[k] + note
+                            data['arith_inconsistent'] = True
+                            resp.set_data(__import__('json').dumps(data))
+                            logger.warning(
+                                f"Arithmetic consistency flag: {avail} {unit} "
+                                f"stated, {claimed} claimed")
                     if stale and isinstance(data.get('response'), str):
                         names = ', '.join(f'"{s}"' for s in stale)
                         note = (f"\n\n⚠ Provenance note: {names} "
