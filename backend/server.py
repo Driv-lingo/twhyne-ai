@@ -1492,19 +1492,30 @@ def create_app():
                                                  data['response'])
                         if bad:
                             unit, avail, claimed = bad
-                            note = (f"\n\n⚠ Consistency check: your question "
-                                    f"states {avail} {unit} in total, but the "
-                                    f"answer above refers to {claimed} {unit}. "
-                                    f"The arithmetic in this answer is "
-                                    f"unreliable.")
+                            # A deterministically detected contradiction
+                            # changes DELIVERY, not just labeling: the wrong
+                            # answer is withheld (kept in withheld_answer
+                            # for the ledger), and the user gets the
+                            # conflict statement.
+                            conflict = (
+                                f"Arithmetic conflict detected: your "
+                                f"question states {avail} {unit} in total, "
+                                f"but the generated answer requires "
+                                f"{claimed} {unit}. The answer was withheld "
+                                f"because it failed quantity verification. "
+                                f"Rephrase, or ask the math directly "
+                                f"(e.g. 'can {avail} {unit} be split 7 "
+                                f"ways?').")
+                            data['withheld_answer'] = data.get('response')
                             for k in ('result', 'response'):
                                 if isinstance(data.get(k), str):
-                                    data[k] = data[k] + note
-                            data['arith_inconsistent'] = True
+                                    data[k] = conflict
+                            data['quantity_upper_bound_violation'] = True
                             resp.set_data(__import__('json').dumps(data))
                             logger.warning(
-                                f"Arithmetic consistency flag: {avail} {unit} "
-                                f"stated, {claimed} claimed")
+                                f"Quantity upper-bound violation: {avail} "
+                                f"{unit} stated, {claimed} claimed - answer "
+                                f"withheld")
                     if stale and isinstance(data.get('response'), str):
                         names = ', '.join(f'"{s}"' for s in stale)
                         note = (f"\n\n⚠ Provenance note: {names} "
