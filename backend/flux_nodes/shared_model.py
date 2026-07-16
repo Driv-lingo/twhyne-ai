@@ -129,10 +129,11 @@ def get_shared_model(model_path, **overrides):
             # models hot, so swapping back to one is near-instant. Over the
             # slow Docker volume bridge, a sequential full read is faster.
             use_mmap=is_local,
-            # mlock pins weights in RAM so the OS can't page them out
-            # mid-generation (the mysterious "sometimes 3x slower" answers).
-            # Opt-out via TWHYNE_MLOCK=0 for low-RAM machines.
-            use_mlock=os.environ.get('TWHYNE_MLOCK', '1') not in ('0', 'false'),
+            # mlock pins weights in RAM - but ON by default it caused
+            # memory pressure inside the 12g container ("failed to munlock
+            # buffer: Cannot allocate memory", 0.9 tok/s observed live).
+            # Now OPT-IN via TWHYNE_MLOCK=1 for machines with headroom.
+            use_mlock=os.environ.get('TWHYNE_MLOCK', '0') in ('1', 'true'),
             n_threads=int(os.environ.get('TWHYNE_THREADS', '0') or 0)
             or max(2, _physical_cores()),
             n_gpu_layers=int(os.environ.get('TWHYNE_GPU_LAYERS', '0')),

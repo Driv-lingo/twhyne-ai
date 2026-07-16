@@ -1915,9 +1915,35 @@ def create_app():
                             return jsonify({'cancelled': True}), 409
                         _set_progress('generating', specialist.node_id)
                         response = specialist.process(q)
-                    return jsonify({'result': response.text, 'response': response.text,
+                    out_text = response.text
+                    # PLANNER HONESTY (deterministic, model can't skip it):
+                    # a fully-local model has NO live data - it cannot know
+                    # whether a venue is still open in the real world. A plan
+                    # published without saying so is a verification failure
+                    # (observed live: a Dubai itinerary recommending closed
+                    # attractions as fact). Every planner answer carries the
+                    # boundary and its assumptions.
+                    if specialist.node_id.startswith('planner'):
+                        out_text += (
+                            "\n\n⚠ **Unverified plan — read before using:** "
+                            "this was generated from the model's training "
+                            "data (which ends well before today). Venues, "
+                            "prices, opening status and schedules are NOT "
+                            "checked against any live source and may be "
+                            "outdated or wrong — verify anything "
+                            "time-sensitive before booking. Where your "
+                            "request left details open (dates, budget, "
+                            "party size, pace), the plan invented "
+                            "assumptions; tell me the real constraints and "
+                            "I'll revise it.")
+                    return jsonify({'result': out_text, 'response': out_text,
                                     'node_id': specialist.node_id, 'sources': [],
-                                    'grounded': False})
+                                    'grounded': False,
+                                    'gates': ({'verdict': 'answered',
+                                               'how': 'generated',
+                                               'unverified_plan': True}
+                                              if specialist.node_id.startswith('planner')
+                                              else None)})
 
             # ---- RETRIEVAL-FIRST ROUTING ---------------------------------
             # Answer cache: only for fresh questions (no conversation
