@@ -60,6 +60,29 @@ minimal, permissioned evidence requests to an isolated retrieval service
 that cannot access Twhyne — and that service cannot certify its own
 output. Evidence authority stays outside the disposable worker.*
 
+**Explicit trust root (do not erase this).** Once the egress proxy
+terminates TLS it is INSIDE the trusted computing base: it can fabricate
+response bytes, final URL, cert metadata, and timestamps as an
+internally-consistent raw_response_record, which the validator will then
+faithfully validate and the signer legitimately sign. TLS protects the
+wire, not the plaintext after termination (RFC 8446). So: **the trusted
+retrieval gateway is an evidence root, not an independently verified
+witness; compromise of that gateway can forge single-path web
+provenance.** This is not a flaw to fix by adding local components - it
+is the irreducible trust base, handled by assurance tiers:
+- **Standard live sourcing** (travel, prices, hours, public info): one
+  hardened gateway + immutable raw record + separate worker + validator +
+  restricted signer. Status ceiling: OFFICIAL-SOURCE-SUPPORTED. Enough to
+  kill stale hallucinations and keep traceable evidence - not
+  courtroom-grade proof a specific byte sequence came from the site.
+- **High-assurance sourcing** (legal/medical/gov/financial): require
+  source-signed datasets or authenticated APIs, and/or TWO independently
+  operated gateways on separate network+DNS paths, multi-source
+  corroboration, append-only transparency logging, human review of
+  consequential conflicts. Dual retrieval doesn't prove the source is
+  truthful, but stops ONE compromised local gateway from silently forging
+  the whole chain.
+
 **Two inviolable rules (the whole design fails without both).**
 1. The fetch worker must NOT hold the signing key — a signature made
    inside a compromised fetcher proves only "the compromised fetcher
@@ -195,27 +218,61 @@ high-assurance) / Managed Evidence Broker (privacy-minimized remote
 fallback). Compromise of a fetch worker should be equivalent to
 trashing a disposable empty browser, never compromising Twhyne.
 
-**Threat posture (Kerckhoffs).** Assume the attacker knows the ENTIRE
+**Status of this design.** Four review passes resolved several major
+conceptual trust-chain flaws and produced a design suitable for
+implementation and formal security review. This closes the Phase 0A
+CONCEPTUAL design sufficiently to begin implementation. The retrieval
+gateway remains an explicit root of trust; the implementation must still
+undergo threat modeling, adversarial testing, and independent review
+before any hospital/government security claim. We cannot know it will
+survive an audit until it does; security is an SSDF lifecycle practice,
+not established by an architecture document. Stop recursively
+redesigning; start building the Phase 0A schemas (see
+backend/evidence/schema.py). Do not erase the standard-tier assumption:
+Twhyne trusts its retrieval gateway to truthfully record what it
+received.
+
+**Explicit trust root (state it, don't pretend it's solved).** The
+egress proxy/retrieval gateway terminates TLS, so it is INSIDE the
+trusted computing base: a compromised gateway can fabricate response
+bytes, final URL, cert metadata, timestamps, and an internally
+consistent raw_response_record - which the validator will then
+accurately validate and the signer legitimately sign. *The retrieval
+gateway is an evidence ROOT, not an independently verified witness;
+compromise of it can forge single-path web provenance.* In the standard
+tier, Twhyne trusts its gateway to truthfully record what it received.
+
+**Assurance tiers** (how that trust is handled honestly):
+- *Standard live sourcing* (travel, prices, hours, public info): one
+   Assume the attacker knows the ENTIRE
 architecture, protocols, source, network diagram, and validation rules.
 Architecture may be public; keys, credentials, tokens, and admin access
 stay secret. Knowing how it works gives a map, not a key - and breaching
 one room must not open the building. If secrecy of the design were
 required for security, the design is defective.
 
-Per-component blast radius (the test every component must pass - "if an
-attacker fully controls this and knows the whole system, what can they
-reach/forge/persist?"):
-- fetch worker → current job fails or returns rejected material;
-- parser/extractor → wrong candidate, cannot be certified alone;
-- egress proxy → retrieval disruption, no core access, cannot sign;
-- validator → cannot sign without the restricted signer policy + matching
-  raw record;
-- signer → cannot retrieve data or build a valid manifest itself;
-- broker → cannot parse hostile content or reach private documents;
+Per-component blast radius (the DISPOSABLE worker is bounded; several
+TRUSTED components remain consequential - "bounded" describes the worker,
+not every component):
+- fetch worker → bad extraction or failed job; cannot certify evidence;
+- parser/extractor → wrong candidate passage; validator catches mismatch;
+- egress proxy/gateway → CAN fabricate single-path raw web provenance
+  (the trust root above); cannot reach core or sign;
+- validator → may approve unsupported/manipulated evidence; cannot sign
+  without the restricted signer policy + matching raw record;
+- signer → can certify manifests its invocation policy permits; cannot
+  retrieve data or build a manifest itself;
+- broker → could misuse its network/orchestration position; cannot parse
+  hostile content or reach private documents;
+- update authority → could distribute compromised trusted components;
+- host admin/kernel → can undermine the entire local trust chain;
 - model → can request only declared capabilities, cannot emit network
   traffic.
 Highest-consequence, need strongest protection + independent review:
-host, broker-admin, software-update authority. Realistic top threats are
+retrieval gateway, host, broker-admin, software-update authority. Zero
+trust means least-privilege per-request decisions, NOT "no trusted
+components exist" - every secure system has a TCB; the goal is to keep
+it small, explicit, and hard for one compromise to abuse. Realistic top threats are
 NOT cryptographic defeat but: broker RCE, network-policy tricks (DNS
 rebinding, redirect-to-private, IP-literal encodings, decompression
 bombs - so validate destination AT CONNECT TIME, recheck every redirect),
