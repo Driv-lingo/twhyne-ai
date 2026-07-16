@@ -2765,13 +2765,28 @@ def create_app():
         if raw is None:
             return jsonify({'outcome': outcome, 'detail': detail,
                             'warning': _warn}), 200
-        # Retain the EXACT bounded body so a future validator has the bytes
-        # the hash covers (a preview + hash alone can't prove a passage).
+        # Retain the exact bounded DECODED body (NOT wire-level raw - gzip
+        # etc. can differ; v0's transport hands identity bytes) so a future
+        # validator has the bytes the decoded_hash covers. Content-addressed,
+        # atomic write, hash-derived name (no caller path), total-size quota
+        # with oldest-first eviction so repeated fetches can't fill the disk.
+        decoded_stored = False
         try:
             store = _AUDIT_PATH.parent / 'evidence_store'
             store.mkdir(parents=True, exist_ok=True)
-            (store / f"{raw.decoded_hash.replace(':', '_')}.bin").write_bytes(
-                raw.decoded_bytes)
+            dest = store / f"{raw.decoded_hash.replace(':', '_')}.decoded.bin"
+            tmp = dest.with_suffix('.part')
+            tmp.write_bytes(raw.decoded_bytes)
+            tmp.rename(dest)  # atomic
+            decoded_stored = True
+            # Quota: keep the store under ~200MB, evict oldest .bin first.
+            files = sorted(store.glob('*.decoded.bin'),
+                           key=lambda p: p.stat().st_mtime)
+            total = sum(p.stat().st_size for p in files)
+            while total > 200 * 1024 * 1024 and len(files) > 1:
+                victim = files.pop(0)
+                total -= victim.stat().st_size
+                victim.unlink(missing_ok=True)
         except Exception as e:
             logger.error(f"evidence store write failed: {e}")
         text = raw.decoded_bytes.decode('utf-8', errors='ignore')
@@ -2779,7 +2794,7 @@ def create_app():
                         'final_url': raw.final_url,
                         'transport_hash': raw.transport_hash,
                         'decoded_hash': raw.decoded_hash,
-                        'raw_stored': True,
+                        'decoded_body_stored': decoded_stored,
                         'cert_fingerprint': raw.cert_fingerprint,
                         'retrieved_at': raw.retrieved_at,
                         'bytes': len(raw.transport_bytes),
