@@ -1625,9 +1625,10 @@ def create_app():
             "**Tips:** name a knowledge base to scope a question (\"in the "
             "handbook, what...\"); follow-up questions stay on the document "
             "you were just discussing; if I can't verify something, I say "
-            "so instead of guessing. Conversations are not saved when the "
-            "window closes — documents you want kept belong in a knowledge "
-            "base.",
+            "so instead of guessing. Conversations save automatically — "
+            "locally in your browser, never to a cloud (reopen them from "
+            "the 💬 panel). Documents you want askable belong in a "
+            "knowledge base.",
         ]
         return '\n'.join(lines)
 

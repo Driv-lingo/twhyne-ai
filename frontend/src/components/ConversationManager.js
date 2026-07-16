@@ -14,12 +14,13 @@ import {
   FaFileExport
 } from 'react-icons/fa';
 
-const ConversationManager = ({ 
-  currentConversation, 
-  onLoadConversation, 
+const ConversationManager = ({
+  currentConversation,
+  onLoadConversation,
   onNewConversation,
   onDeleteConversation,
-  currentHistory 
+  onAutoSaved,
+  currentHistory
 }) => {
   const [conversations, setConversations] = useState([]);
   const [showManager, setShowManager] = useState(false);
@@ -31,6 +32,49 @@ const ConversationManager = ({
   useEffect(() => {
     loadConversations();
   }, []);
+
+  // AUTOSAVE: every conversation persists on its own - locally, in this
+  // browser's storage, nothing leaves the machine. The first completed
+  // exchange creates the entry (named from the first question); each new
+  // message updates it. Manual Save/rename/export remain for curation.
+  useEffect(() => {
+    if (!currentHistory || currentHistory.length < 2) return;
+    if (currentHistory.some(m => m.pending)) return;  // wait for answers
+    const t = setTimeout(() => {
+      setConversations(prev => {
+        let list;
+        if (currentConversation && prev.some(c => c.id === currentConversation.id)) {
+          list = prev.map(c => c.id === currentConversation.id
+            ? { ...c, messages: currentHistory,
+                messageCount: currentHistory.length,
+                timestamp: new Date().toISOString() }
+            : c);
+        } else {
+          const firstUser = currentHistory.find(m => m.role === 'user');
+          const conv = {
+            id: Date.now().toString(),
+            name: ((firstUser && firstUser.content) || 'Conversation').slice(0, 48),
+            messages: currentHistory,
+            timestamp: new Date().toISOString(),
+            messageCount: currentHistory.length,
+          };
+          list = [...prev, conv];
+          if (onAutoSaved) onAutoSaved(conv);
+        }
+        // Bound growth: keep the 50 most recent (localStorage is ~5MB).
+        if (list.length > 50) {
+          list = [...list].sort((a, b) =>
+            new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 50);
+        }
+        try {
+          localStorage.setItem('twhyne_conversations', JSON.stringify(list));
+        } catch (e) { /* storage full: keep in-memory list */ }
+        return list;
+      });
+    }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentHistory, currentConversation]);
 
   const loadConversations = () => {
     const saved = localStorage.getItem('twhyne_conversations');
