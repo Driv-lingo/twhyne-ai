@@ -60,14 +60,62 @@ minimal, permissioned evidence requests to an isolated retrieval service
 that cannot access Twhyne — and that service cannot certify its own
 output. Evidence authority stays outside the disposable worker.*
 
-**The critical rule (do not violate).** The fetch worker is assumed
-compromisable, so it must NOT hold the signing key. A signature made
-inside a compromised fetcher proves only "the compromised fetcher made
-this." Chain: core → signed request → trusted broker → bounded fetch
-spec → disposable fetcher (hashes bytes, returns UNSIGNED raw evidence)
-→ policy validator (URL/DNS/redirects/size/hash/schema) → separate
-signing service (key in native broker / OS keystore / TPM / KMS) →
-signed evidence manifest → core.
+**Two inviolable rules (the whole design fails without both).**
+1. The fetch worker must NOT hold the signing key — a signature made
+   inside a compromised fetcher proves only "the compromised fetcher
+   made this."
+2. The disposable worker must NOT be the sole source of the bytes, hash,
+   final URL, or retrieval metadata that the validator certifies — a
+   worker assumed compromised can fabricate all of them. The TRUSTED
+   EGRESS PROXY captures the real response; the worker only extracts
+   from a copy it cannot alter.
+
+Corrected chain (proxy is the retrieval boundary of record):
+```
+core → signed request → trusted broker → bounded fetch spec
+  → TRUSTED EGRESS PROXY: resolves DNS, validates dest + every redirect,
+    establishes TLS, records final URL + cert metadata + response bytes,
+    stores the IMMUTABLE raw_response_record
+  → disposable worker: gets a COPY, parses/extracts a candidate passage,
+    cannot touch the stored original
+  → policy validator: reads the stored original independently,
+    recomputes the hash, confirms the cited passage exists in the
+    original bytes, applies source/freshness policy → validation_manifest
+  → restricted signer: signs ONLY a validated manifest from the
+    authorized validator (see signer policy) → signed_evidence_record
+  → core
+```
+The four objects are DISTINCT and must never be collapsed (collapsing
+recreates the trust hole): `raw_response_record` (proxy-owned, immutable),
+`worker_extraction` (untrusted), `validation_manifest` (validator-owned),
+`signed_evidence_record` (signer-owned). Phase 0A schemas define all four.
+
+**Signer policy (key storage alone is not enough).** A TPM/KMS stops key
+EXTRACTION, not key MISUSE by a compromised validator. The signer accepts
+only `{validated_manifest_id, validator_policy, raw_object_hash,
+validation_result:"passed"}` from the authorized validator - never
+arbitrary text/hashes - and validator and signer are separate processes
+with different credentials (separation of duties). Every signed record
+carries job id, request nonce, retrieval timestamp, max-age/expiry,
+policy version, final URL, raw content hash, validator version - so the
+core rejects validly-signed-but-EXPIRED, wrong-job, or stale-policy
+evidence (anti-replay).
+
+**Broker is the highest-value target - keep it dumb.** It must NOT render
+pages, parse HTML/PDF/JS/images, hold documents, forward arbitrary
+traffic, expose a generic proxy, share a filesystem with core, or accept
+model-chosen URLs. Only: validate signed job schemas, move opaque job/
+evidence IDs, enforce state transitions. All risky parsing lives outside
+it.
+
+**Evidence binding checks TWICE** (a planner can emit an uncatalogued
+claim after the evidence requests): pre-generation flags claims needing
+current evidence; POST-generation extracts every externally-checkable
+claim from the finished answer and requires each to carry an evidence_id
+or an explicit unsupported status. High-risk categories (opening status,
+price, schedule, legal, availability) use DETERMINISTIC patterns +
+structured itinerary fields, not another model's judgment, to catch the
+claims.
 
 **Four security roles**, bridged only by the narrow broker (fixed
 schema, never arbitrary forwarding): (1) Twhyne core, (2) job/evidence
@@ -147,10 +195,43 @@ high-assurance) / Managed Evidence Broker (privacy-minimized remote
 fallback). Compromise of a fetch worker should be equivalent to
 trashing a disposable empty browser, never compromising Twhyne.
 
+**Threat posture (Kerckhoffs).** Assume the attacker knows the ENTIRE
+architecture, protocols, source, network diagram, and validation rules.
+Architecture may be public; keys, credentials, tokens, and admin access
+stay secret. Knowing how it works gives a map, not a key - and breaching
+one room must not open the building. If secrecy of the design were
+required for security, the design is defective.
+
+Per-component blast radius (the test every component must pass - "if an
+attacker fully controls this and knows the whole system, what can they
+reach/forge/persist?"):
+- fetch worker → current job fails or returns rejected material;
+- parser/extractor → wrong candidate, cannot be certified alone;
+- egress proxy → retrieval disruption, no core access, cannot sign;
+- validator → cannot sign without the restricted signer policy + matching
+  raw record;
+- signer → cannot retrieve data or build a valid manifest itself;
+- broker → cannot parse hostile content or reach private documents;
+- model → can request only declared capabilities, cannot emit network
+  traffic.
+Highest-consequence, need strongest protection + independent review:
+host, broker-admin, software-update authority. Realistic top threats are
+NOT cryptographic defeat but: broker RCE, network-policy tricks (DNS
+rebinding, redirect-to-private, IP-literal encodings, decompression
+bombs - so validate destination AT CONNECT TIME, recheck every redirect),
+replay of old signed evidence, host compromise, supply-chain (signed
+releases, pinned image hashes, SBOMs, reproducible builds, rollback), and
+MISCONFIGURATION (secure-by-default: never silently fall back to open
+internet, never ship the docker socket mounted, no signing creds in env
+vars). Before any "secure for hospital/government" claim: independent
+threat-model review + code audit + config audit + adversarial pentest.
+
 Sources the design leans on: NIST SP 800-207 (zero trust - network
-location is not trust), OWASP SSRF, NIST SP 800-190 (container security
-surfaces), NIST SP 800-125 (virtualization mgmt interface is sensitive;
-disable unused virtual hardware).
+location is not trust), OWASP SSRF + threat modeling, NIST SP 800-190
+(container security surfaces), NIST SP 800-125 (virtualization mgmt
+interface is sensitive; disable unused virtual hardware), NIST SP 800-53
+least privilege / separation of duties, CISA Secure-by-Design (defense
+in depth; secure defaults).
 
 ## Also tracked
 
