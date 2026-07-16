@@ -133,6 +133,7 @@ docker run --name twhyne-ai \
   -e TWHYNE_MAX_RESIDENT="${TWHYNE_MAX_RESIDENT:-1}" \
   -v "$MODELS_DIR:/app/models" \
   -v "$RAG_DIR:/app/backend/rag_storage" \
+  -v twhyne_modelcache:/app/model_cache \
   -p 3000:3000 \
   -p 5002:5002 \
   -m "${TWHYNE_MEM:-12g}" \
