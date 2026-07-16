@@ -47,8 +47,66 @@ BOOKING_SENSITIVE = (
 )
 
 
+SCHEMA_VERSION = "0b.1"
+
+
 def _sha256(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+# ---- distinct outcome states (never collapse to UNVERIFIED) --------------
+# Operators must be able to tell "forbidden" from "failed" from "contradicted".
+OUTCOMES = (
+    "POLICY_DENIED",            # the capability/policy forbade this request
+    "DESTINATION_REJECTED",     # URL/DNS/redirect hit a blocked target
+    "FETCH_FAILED",             # network attempt failed
+    "CONTENT_LIMIT_EXCEEDED",   # response too large / decompression bomb
+    "EXTRACTION_FAILED",        # worker produced nothing usable
+    "VALIDATION_FAILED",        # extraction didn't match captured bytes
+    "SIGNING_FAILED",           # signer refused
+    "SOURCE_CONFLICT",          # credible official sources disagree
+    "OFFICIAL_SOURCE_SUPPORTED",
+    "LIVE_SOURCE_CONTRADICTED",
+)
+
+
+# ---- canonical serialization (freeze BEFORE any signing) -----------------
+# Signatures must not depend on which runtime serialized the object. This is
+# a deterministic canonical form: sorted keys, no insignificant whitespace,
+# rejects duplicate keys and unknown fields, and always binds schema_version.
+def canonical_bytes(obj: Dict[str, Any], allowed_fields) -> bytes:
+    """Deterministic bytes for signing/verifying. Raises ValueError on
+    duplicate keys, unknown fields, or a missing schema_version so nothing
+    ambiguous ever enters the signed scope."""
+    import json
+    if not isinstance(obj, dict):
+        raise ValueError("canonical_bytes requires a dict")
+    if obj.get("schema_version") != SCHEMA_VERSION:
+        raise ValueError("schema_version missing or incompatible")
+    unknown = set(obj) - set(allowed_fields)
+    if unknown:
+        raise ValueError(f"unknown fields in signed scope: {sorted(unknown)}")
+    # json.dumps already rejects nothing for dup keys (Python dict can't hold
+    # them), but a JSON string parsed with a dup-key hook would - so callers
+    # that parse untrusted JSON must use _reject_dup_keys below.
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False).encode("utf-8")
+
+
+def parse_no_dup_keys(text: str) -> Dict[str, Any]:
+    """Parse JSON, rejecting duplicate keys (which json.loads silently keeps
+    the last of - an injection vector for signed payloads)."""
+    import json
+
+    def _hook(pairs):
+        seen = set()
+        for k, _ in pairs:
+            if k in seen:
+                raise ValueError(f"duplicate key {k!r}")
+            seen.add(k)
+        return dict(pairs)
+
+    return json.loads(text, object_pairs_hook=_hook)
 
 
 # ---- 1. retrieval_job (core -> broker; signed by core in 0B) -------------
@@ -87,18 +145,22 @@ class RawResponseRecord:
     job_id: str
     final_url: str
     status_code: int
-    content_bytes: bytes
+    transport_bytes: bytes              # EXACT bytes off the wire (maybe gzip)
+    content_encoding: str               # e.g. "gzip", "identity"
+    decoded_bytes: bytes                # bounded canonical decoded body
     cert_fingerprint: str
     retrieved_at: float
-    content_hash: str = ""
 
-    def with_hash(self) -> "RawResponseRecord":
-        return RawResponseRecord(
-            job_id=self.job_id, final_url=self.final_url,
-            status_code=self.status_code, content_bytes=self.content_bytes,
-            cert_fingerprint=self.cert_fingerprint,
-            retrieved_at=self.retrieved_at,
-            content_hash=_sha256(self.content_bytes))
+    @property
+    def transport_hash(self) -> str:
+        return _sha256(self.transport_bytes)
+
+    @property
+    def decoded_hash(self) -> str:
+        # Extractor and validator compare passages against THIS canonical
+        # decoded body - never against differently-decoded text, which could
+        # let one component validate what another never saw.
+        return _sha256(self.decoded_bytes)
 
 
 # ---- 3. worker_extraction (UNTRUSTED) -----------------------------------
@@ -123,32 +185,34 @@ def validate_extraction(raw: RawResponseRecord, ext: WorkerExtraction,
     reasons = []
     if raw.job_id != ext.job_id or raw.job_id != job.job_id:
         reasons.append("job_id mismatch across objects")
-    true_hash = _sha256(raw.content_bytes)
+    true_hash = raw.decoded_hash
     # Domain of the final URL must be on the allowlist (post-redirect check).
     dom = raw.final_url.split("://", 1)[-1].split("/", 1)[0].lower()
     if not any(dom == d or dom.endswith("." + d) for d in job.allowed_domains):
         reasons.append(f"final domain {dom!r} not in allowlist")
-    # The cited passage must actually be in the captured bytes (text view).
+    # The cited passage must occur in the canonical DECODED bytes (the same
+    # representation the extractor was given).
     try:
-        text = raw.content_bytes.decode("utf-8", errors="ignore")
+        text = raw.decoded_bytes.decode("utf-8", errors="ignore")
     except Exception:
         text = ""
     if not ext.cited_passage or ext.cited_passage not in text:
         reasons.append("cited passage not found in captured bytes")
     if ext.assessment not in ("supported", "contradicted", "unclear"):
         reasons.append(f"invalid assessment {ext.assessment!r}")
-    status = {"supported": "OFFICIAL-SOURCE-SUPPORTED",
-              "contradicted": "LIVE-SOURCE-CONTRADICTED",
+    status = {"supported": "OFFICIAL_SOURCE_SUPPORTED",
+              "contradicted": "LIVE_SOURCE_CONTRADICTED",
               "unclear": "UNVERIFIED"}.get(ext.assessment, "UNVERIFIED")
     manifest = {
         "manifest_id": "VM-" + uuid.uuid4().hex[:12],
         "job_id": job.job_id,
         "nonce": job.nonce,
-        "raw_object_hash": true_hash,
+        "decoded_content_hash": true_hash,
+        "transport_hash": raw.transport_hash,
         "final_url": raw.final_url,
         "cert_fingerprint": raw.cert_fingerprint,
         "claim": ext.claim,
-        "status": status if not reasons else "FETCH-FAILED",
+        "status": status if not reasons else "VALIDATION_FAILED",
         "cited_passage": ext.cited_passage if not reasons else "",
         "validator_policy": job.source_policy,
         "validator_version": "validator-0.1.0",
@@ -165,15 +229,24 @@ def validate_extraction(raw: RawResponseRecord, ext: WorkerExtraction,
 # a separate process. Phase 0A models the POLICY: the signer accepts only a
 # validator-produced manifest with result 'passed' and signs a bound subset -
 # never arbitrary text or hashes.
-_SIGNER_REQUIRED = ("manifest_id", "job_id", "nonce", "raw_object_hash",
+_SIGNER_REQUIRED = ("manifest_id", "job_id", "nonce", "decoded_content_hash",
                     "validator_policy", "validation_result")
+
+# The exact fields inside the signature. Frozen: unknown fields cannot enter
+# the signed scope, and every field is always present (null if absent) so
+# omitted-vs-null can't be confused.
+_SIGNED_FIELDS = ("schema_version", "manifest_id", "job_id", "nonce",
+                  "decoded_content_hash", "transport_hash", "final_url",
+                  "claim", "status", "cited_passage", "policy",
+                  "retrieved_at", "expires_at")
 
 
 def sign_manifest(manifest: Dict[str, Any], signing_key: bytes,
                   authorized_validator_version: str = "validator-0.1.0"
                   ) -> Optional[Dict[str, Any]]:
     """Restricted signer. Returns a signed_evidence_record, or None if the
-    manifest is not a passed manifest from the authorized validator."""
+    manifest is not a passed manifest from the authorized validator. Signs a
+    CANONICAL serialization bound to schema_version."""
     if not isinstance(manifest, dict):
         return None
     if any(k not in manifest for k in _SIGNER_REQUIRED):
@@ -183,10 +256,12 @@ def sign_manifest(manifest: Dict[str, Any], signing_key: bytes,
     if manifest.get("validator_version") != authorized_validator_version:
         return None
     payload = {
+        "schema_version": SCHEMA_VERSION,
         "manifest_id": manifest["manifest_id"],
         "job_id": manifest["job_id"],
         "nonce": manifest["nonce"],
-        "raw_object_hash": manifest["raw_object_hash"],
+        "decoded_content_hash": manifest["decoded_content_hash"],
+        "transport_hash": manifest.get("transport_hash"),
         "final_url": manifest.get("final_url"),
         "claim": manifest.get("claim"),
         "status": manifest.get("status"),
@@ -195,8 +270,7 @@ def sign_manifest(manifest: Dict[str, Any], signing_key: bytes,
         "retrieved_at": manifest.get("retrieved_at"),
         "expires_at": manifest.get("expires_at"),
     }
-    import json
-    body = json.dumps(payload, sort_keys=True).encode()
+    body = canonical_bytes(payload, _SIGNED_FIELDS)
     sig = hmac.new(signing_key, body, hashlib.sha256).hexdigest()
     return {**payload, "signature": sig}
 
@@ -208,13 +282,15 @@ def verify_evidence(record: Dict[str, Any], signing_key: bytes,
     """Core-side acceptance. Returns (ok, reason). Rejects tampering, replay
     (wrong job/nonce), expiry, and unacceptable policy - even for a validly
     signed record."""
-    import json
     now = now if now is not None else time.time()
     if not isinstance(record, dict) or "signature" not in record:
         return False, "no signature"
     given = record["signature"]
-    body = json.dumps({k: v for k, v in record.items() if k != "signature"},
-                      sort_keys=True).encode()
+    try:
+        body = canonical_bytes({k: v for k, v in record.items()
+                                if k != "signature"}, _SIGNED_FIELDS)
+    except ValueError as e:
+        return False, f"non-canonical record ({e})"
     expected = hmac.new(signing_key, body, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(given, expected):
         return False, "signature mismatch (tampered or forged)"

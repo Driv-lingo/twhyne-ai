@@ -11,6 +11,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from evidence.schema import (  # noqa: E402
     RetrievalJob, RawResponseRecord, WorkerExtraction,
     validate_extraction, sign_manifest, verify_evidence, finalization_check,
+    canonical_bytes, parse_no_dup_keys, SCHEMA_VERSION, _SIGNED_FIELDS,
+)
+from evidence.destination import (  # noqa: E402
+    validate_url, validate_resolved_ip, validate_redirect,
 )
 
 KEY = b"phase0a-test-signing-key"
@@ -26,7 +30,8 @@ def _job():
 
 def _raw(job, url="https://visitdubai.com/museum", body=PAGE):
     return RawResponseRecord(job_id=job.job_id, final_url=url, status_code=200,
-                             content_bytes=body, cert_fingerprint="cf:abc",
+                             transport_bytes=body, content_encoding="identity",
+                             decoded_bytes=body, cert_fingerprint="cf:abc",
                              retrieved_at=time.time())
 
 
@@ -41,7 +46,7 @@ def test_happy_path_signs_and_verifies():
     job = _job(); raw = _raw(job); ext = _ext(job)
     m = validate_extraction(raw, ext, job)
     assert m["validation_result"] == "passed"
-    assert m["status"] == "LIVE-SOURCE-CONTRADICTED"
+    assert m["status"] == "LIVE_SOURCE_CONTRADICTED"
     rec = sign_manifest(m, KEY)
     assert rec is not None
     ok, why = verify_evidence(rec, KEY, job.job_id, job.nonce,
@@ -63,7 +68,7 @@ def test_altered_bytes_change_hash():
     # The validator hashes the PROXY bytes, never the worker's claimed_hash.
     job = _job(); raw = _raw(job)
     m = validate_extraction(raw, _ext(job), job)
-    assert m["raw_object_hash"] != "sha256:worker-says-whatever"
+    assert m["decoded_content_hash"] != "sha256:worker-says-whatever"
 
 
 def test_domain_not_in_allowlist_fails():
@@ -139,6 +144,97 @@ def test_booking_claim_with_explicit_unsupported_allows_finalization():
         {"claim_id": "C2", "category": "general"},  # not booking-sensitive
     ]
     assert finalization_check(claims)["finalization_allowed"]
+
+
+# ---- freeze-first: destination validation (SSRF) -------------------------
+def test_https_only_and_allowlist():
+    ok, _ = validate_url("https://visitdubai.com/x", ["visitdubai.com"])
+    assert ok
+    assert not validate_url("http://visitdubai.com/x", ["visitdubai.com"])[0]
+    assert not validate_url("https://evil.com/x", ["visitdubai.com"])[0]
+
+
+def test_ip_literal_and_userinfo_and_port_rejected():
+    dom = ["visitdubai.com"]
+    assert not validate_url("https://169.254.169.254/", dom)[0]
+    assert not validate_url("https://2130706433/", dom)[0]        # decimal IP
+    assert not validate_url("https://0x7f000001/", dom)[0]        # hex IP
+    assert not validate_url("https://user@visitdubai.com/", dom)[0]
+    assert not validate_url("https://visitdubai.com:8443/", dom)[0]
+
+
+def test_resolved_ip_blocks_private_and_metadata():
+    assert not validate_resolved_ip("127.0.0.1")[0]
+    assert not validate_resolved_ip("10.0.0.5")[0]
+    assert not validate_resolved_ip("169.254.169.254")[0]         # metadata
+    assert not validate_resolved_ip("::1")[0]
+    assert not validate_resolved_ip("::ffff:169.254.169.254")[0]  # v4-mapped
+    assert validate_resolved_ip("93.184.216.34")[0]               # public
+
+
+def test_redirect_to_private_or_offlist_rejected():
+    dom = ["visitdubai.com"]
+    assert not validate_redirect("https://visitdubai.com/a",
+                                 "https://10.0.0.1/b", dom)[0]
+    assert not validate_redirect("https://visitdubai.com/a",
+                                 "https://evil.com/b", dom)[0]
+
+
+# ---- freeze-first: canonical serialization -------------------------------
+def test_canonical_is_order_independent():
+    a = {"schema_version": SCHEMA_VERSION, "job_id": "1", "nonce": "2"}
+    b = {"nonce": "2", "job_id": "1", "schema_version": SCHEMA_VERSION}
+    fields = ("schema_version", "job_id", "nonce")
+    assert canonical_bytes(a, fields) == canonical_bytes(b, fields)
+
+
+def test_canonical_rejects_unknown_field_and_bad_version():
+    fields = ("schema_version", "job_id")
+    try:
+        canonical_bytes({"schema_version": SCHEMA_VERSION, "job_id": "1",
+                         "sneaky": "x"}, fields)
+        assert False, "unknown field should raise"
+    except ValueError:
+        pass
+    try:
+        canonical_bytes({"schema_version": "999", "job_id": "1"}, fields)
+        assert False, "bad schema_version should raise"
+    except ValueError:
+        pass
+
+
+def test_parse_rejects_duplicate_keys():
+    try:
+        parse_no_dup_keys('{"a": 1, "a": 2}')
+        assert False, "dup key should raise"
+    except ValueError:
+        pass
+    assert parse_no_dup_keys('{"a": 1, "b": 2}') == {"a": 1, "b": 2}
+
+
+def test_signed_record_is_canonical_and_binds_schema_version():
+    job = _job(); m = validate_extraction(_raw(job), _ext(job), job)
+    rec = sign_manifest(m, KEY)
+    assert rec["schema_version"] == SCHEMA_VERSION
+    assert set(rec) - {"signature"} == set(_SIGNED_FIELDS)
+
+
+def test_transport_and_decoded_hashes_distinct_when_encoded():
+    import gzip
+    job = _job()
+    decoded = b"The venue is temporarily closed for renovations."
+    transport = gzip.compress(decoded)
+    raw = RawResponseRecord(job_id=job.job_id, final_url="https://visitdubai.com/m",
+                            status_code=200, transport_bytes=transport,
+                            content_encoding="gzip", decoded_bytes=decoded,
+                            cert_fingerprint="cf", retrieved_at=time.time())
+    assert raw.transport_hash != raw.decoded_hash
+    ext = WorkerExtraction(job_id=job.job_id, claim="open",
+                           assessment="contradicted",
+                           cited_passage="temporarily closed",
+                           claimed_hash="x")
+    m = validate_extraction(raw, ext, job)
+    assert m["validation_result"] == "passed"  # matched against DECODED
 
 
 if __name__ == "__main__":
