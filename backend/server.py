@@ -455,11 +455,25 @@ def _route_query(prompt: str, node_registry) -> Optional[Any]:
                'derivative', 'integral', 'integrate', 'differentiate']:
         if _has_kw(kw):
             scores['math-llm-eval'] += 2
+    # A conceptual "explain / what is / tell me about X" ask wants PROSE, not
+    # code - even when X is a code concept ("Explain what a linked list is"
+    # was misrouting to the code node on the 'linked list' keyword and getting
+    # an implementation instead of an explanation). Only treat a build verb
+    # ("write/implement a linked list") as decisive over this. So: when the
+    # phrasing is an explanation request AND no build verb is present, the
+    # code-concept nouns do NOT pull it to the code node.
+    build_verb = re.search(r'\b(write|implement|build|create|code|debug|fix|'
+                           r'refactor|generate)\b', p) is not None
+    explain_intent = re.search(
+        r'^\s*(explain|describe|what\s+(is|are|does|do)|what\'?s|'
+        r'tell\s+me\s+about|how\s+(does|do|is|are)|why\s+(is|are|does|do)|'
+        r'define|difference\s+between|compare)\b', p) is not None
+    concept_ok = not (explain_intent and not build_verb)
     for kw in ['code', 'function', 'class', 'method', 'algorithm', 'programming', 'script',
                'debug', 'syntax', 'variable', 'loop', 'python', 'javascript',
                'binary tree', 'linked list', 'recursion', 'recursive', 'array',
                'data structure', 'regex', 'sql']:
-        if _has_kw(kw):
+        if concept_ok and _has_kw(kw):
             scores[CODE_NODE_ID] += 1
     # "Write a function to CALCULATE Fibonacci numbers" is a CODE request:
     # 'calculate' scored math +2 and outweighed 'function' +1, misrouting a
