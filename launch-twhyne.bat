@@ -95,7 +95,9 @@ echo Starting Twhyne AI...
 echo   Frontend: http://localhost:3000
 echo   Backend:  http://localhost:5002
 echo.
-echo (First response may take up to a minute while the model loads.)
+echo (Local models are loading. On CPU-only systems the FIRST response may take
+echo  several minutes while a 7B model loads and generates; later responses are
+echo  faster. Your reasoning stays on this machine - that is the trade for speed.)
 echo Close this window or press Ctrl+C to stop Twhyne.
 echo ============================================================
 
