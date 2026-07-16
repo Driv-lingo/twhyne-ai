@@ -38,6 +38,44 @@ _cache = {}
 # (SymPy) stay lock-free and never queue behind a long generation.
 INFER_LOCK = threading.Lock()
 
+# ---- Mid-generation cancellation ------------------------------------------
+# llama.cpp generation runs to completion unless a per-token stopping check
+# says stop. Without this a cancelled question keeps generating, holds the
+# INFER_LOCK, and blocks the next question (observed as "I cancelled but it
+# hung, and the next question never ran"). The server marks an id cancelled;
+# the running generation checks it every token and stops.
+_CANCELLED_IDS = set()
+_CANCELLED_IDS_LOCK = threading.Lock()
+
+
+def mark_cancelled(rid):
+    if not rid:
+        return
+    with _CANCELLED_IDS_LOCK:
+        _CANCELLED_IDS.add(rid)
+        if len(_CANCELLED_IDS) > 1000:
+            _CANCELLED_IDS.clear()
+            _CANCELLED_IDS.add(rid)
+
+
+def is_cancelled(rid):
+    if not rid:
+        return False
+    with _CANCELLED_IDS_LOCK:
+        return rid in _CANCELLED_IDS
+
+
+def stopping_criteria_for(rid):
+    """A llama.cpp StoppingCriteriaList that halts generation the moment the
+    request id is cancelled, or None if unavailable / no id."""
+    if not rid:
+        return None
+    try:
+        from llama_cpp import StoppingCriteriaList
+    except Exception:
+        return None
+    return StoppingCriteriaList([lambda input_ids, logits: is_cancelled(rid)])
+
 _LOCAL_CACHE_DIR = Path('/app/model_cache')
 
 

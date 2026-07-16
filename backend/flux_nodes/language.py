@@ -47,8 +47,12 @@ class LanguageNode(FluxNode):
         try:
             # Fetch at call time (do not cache): the shared cache keeps ONE
             # resident model and may have evicted ours for another node.
-            from .shared_model import get_shared_model
+            from .shared_model import get_shared_model, stopping_criteria_for
             model = get_shared_model(self.model_path)
+
+            # Per-token cancellation: if the user cancels, this halts the
+            # in-flight generation and frees INFER_LOCK for the next question.
+            stop_crit = stopping_criteria_for(kwargs.get('client_request_id'))
 
             formatted_prompt = self._format_prompt(prompt, conversation_history)
             import time as _t
@@ -71,6 +75,7 @@ class LanguageNode(FluxNode):
                 # content into the answer and wasting minutes of generation.
                 repeat_penalty=1.0,
                 stop=["</s>", "\nQuestion:", "\n[Question", "\nQ:"], echo=False,
+                stopping_criteria=stop_crit,
             )
             # Perf transparency: log tokens/sec so slowness is diagnosable
             # from the launcher window (thread misconfig, paging, contention).

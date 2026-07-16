@@ -2004,6 +2004,7 @@ def create_app():
                     image_path = data.get('image_path') or data.get('filepath')
                     if image_path and specialist.node_id == 'vision-llava-1.6-7b':
                         parameters['image_path'] = image_path
+                    parameters['client_request_id'] = client_rid
                     q = Query(id=f"query_{int(time.time() * 1000)}", text=prompt,
                               parameters=parameters, history=conversation_history)
                     _set_progress('queued', specialist.node_id)
@@ -2354,7 +2355,7 @@ def create_app():
                 # caused token overflows); the capped snippet above is enough
                 # for follow-up questions.
                 q = Query(id=f"query_{int(time.time() * 1000)}", text=grounded,
-                          parameters={}, history=[])
+                          parameters={'client_request_id': client_rid}, history=[])
                 _set_progress('queued', 'grounded answer')
                 with _INFER_LOCK:
                     if _is_cancelled(client_rid):
@@ -2418,7 +2419,7 @@ def create_app():
 
             filepath = data.get('filepath', None)
             image_path = data.get('image_path', None)
-            parameters = {}
+            parameters = {'client_request_id': client_rid}
             if (filepath or image_path) and node.node_id == 'vision-llava-1.6-7b':
                 parameters['image_path'] = image_path if image_path else filepath
 
@@ -2459,6 +2460,14 @@ def create_app():
             if len(_CANCELLED) > 1000:  # bounded memory
                 _CANCELLED.clear()
                 _CANCELLED.add(rid)
+        # Also stop generation ALREADY in flight (per-token check), so the
+        # cancelled job releases the inference lock instead of running to
+        # completion and blocking the next question.
+        try:
+            from flux_nodes.shared_model import mark_cancelled
+            mark_cancelled(rid)
+        except Exception:
+            pass
         logger.info(f"Request cancelled: {rid}")
         return jsonify({'cancelled': rid})
 

@@ -162,8 +162,9 @@ class CodeNode(FluxNode):
                     f"<|im_start|>assistant\n")
         return prompt_text
 
-    def _generate_once(self, model, prompt_text: str) -> str:
+    def _generate_once(self, model, prompt_text: str, rid: str = None) -> str:
         import time as _t
+        from .shared_model import stopping_criteria_for
         _t0 = _t.time()
         # Stop sequences keep the model from rambling into invented follow-up
         # exercises after it has answered (observed in benchmark output).
@@ -181,6 +182,7 @@ class CodeNode(FluxNode):
                   "\nIt failed with", "\nIt passed with",
                   "You are a helpful coding assistant"],
             echo=False,
+            stopping_criteria=stopping_criteria_for(rid),
         )
         # Perf transparency: every generation logs tokens/sec so "why is it
         # slow" is answerable from the launcher window, not guesswork.
@@ -266,7 +268,8 @@ class CodeNode(FluxNode):
             model = get_shared_model(self.model_path, n_ctx=4096)
 
             history = kwargs.get('conversation_history', [])
-            raw = self._generate_once(model, self._format_prompt(prompt, history))
+            rid = kwargs.get('client_request_id')
+            raw = self._generate_once(model, self._format_prompt(prompt, history), rid)
             code = _extract_code(raw)
             if code is None:
                 return raw  # no code block found; return the text as-is
@@ -296,7 +299,7 @@ class CodeNode(FluxNode):
                 logger.info(f"Candidate {attempt}/{n_candidates} "
                             f"(previous failed: {str(err)[:80]})")
                 raw_n = self._generate_once(
-                    model, self._format_prompt(prompt, history))
+                    model, self._format_prompt(prompt, history), rid)
                 code_n = _extract_code(raw_n)
                 if not code_n:
                     continue
@@ -321,7 +324,7 @@ class CodeNode(FluxNode):
                     f"It failed with this error:\n{err}\n{hint}\n"
                     "Write a corrected version.\n\nCode:"
                 )
-                raw2 = self._generate_once(model, retry_prompt)
+                raw2 = self._generate_once(model, retry_prompt, rid)
                 code2 = _extract_code(raw2)
                 if code2:
                     code2 = _trim_to_compilable(code2)
