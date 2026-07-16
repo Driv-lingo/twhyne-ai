@@ -308,9 +308,17 @@ class CodeNode(FluxNode):
                     code, err = code_n, err_n
             if not ok:
                 logger.info(f"Generated code failed verification ({err}); retrying once")
+                # A missing module is an ENVIRONMENT constraint, not a logic
+                # bug - the repair must swap the dependency out, not fiddle
+                # with the algorithm.
+                mod_missing = re.search(r"No module named '([^']+)'", err or '')
+                hint = (f"\nIMPORTANT: the module '{mod_missing.group(1)}' is "
+                        f"NOT installed and cannot be used. Rewrite using "
+                        f"only the standard library, numpy, pandas or "
+                        f"scikit-learn.\n" if mod_missing else "")
                 retry_prompt = self._format_prompt(prompt, history) + (
                     f"\n\nA previous attempt produced this code:\n{code}\n\n"
-                    f"It failed with this error:\n{err}\n\n"
+                    f"It failed with this error:\n{err}\n{hint}\n"
                     "Write a corrected version.\n\nCode:"
                 )
                 raw2 = self._generate_once(model, retry_prompt)
@@ -369,7 +377,20 @@ class CodeNode(FluxNode):
             if mode == 'draft' and code:
                 # The user always gets SOMETHING plus a full account: what
                 # was tried, what failed, and what would help - never a
-                # dead-end.
+                # dead-end. A missing module gets the HONEST cause: the
+                # sandbox lacks the library; the logic was never tested.
+                mm = re.search(r"No module named '([^']+)'", first_err or '')
+                if mm:
+                    return (f"```python\n{code}\n```\n\n"
+                            f"UNVERIFIED DRAFT — the code imports "
+                            f"`{mm.group(1)}`, which is not installed in "
+                            f"Twhyne's verification sandbox, so it could not "
+                            f"be executed at all (the logic itself was never "
+                            f"tested). It may run fine in your own "
+                            f"environment with `pip install {mm.group(1)}`. "
+                            f"For a verified answer, ask for a version using "
+                            f"the standard library, numpy, pandas or "
+                            f"scikit-learn.")
                 return (f"```python\n{code}\n```\n\n"
                         f"UNVERIFIED DRAFT — here is exactly what happened: "
                         f"I generated this code and executed it; it failed "
@@ -410,6 +431,6 @@ class CodeNode(FluxNode):
 
 {ctx}Request: {query_text}
 
-Provide ONE complete, ready-to-run Python code block containing: the function with necessary imports and brief comments, followed by 3 module-level assert statements that test a typical case, an empty/edge case, and the expected behavior. IMPORTANT: never compare custom objects with == in asserts (classes without __eq__ compare by identity and the assert always fails) - convert results to plain values first, e.g. for a linked list assert on the sequence of .val fields as a Python list. Do not add extra exercises or commentary after the code.
+Provide ONE complete, ready-to-run Python code block containing: the function with necessary imports and brief comments, followed by 3 module-level assert statements that test a typical case, an empty/edge case, and the expected behavior. IMPORTANT: never compare custom objects with == in asserts (classes without __eq__ compare by identity and the assert always fails) - convert results to plain values first, e.g. for a linked list assert on the sequence of .val fields as a Python list. AVAILABLE LIBRARIES: the Python standard library, numpy, pandas, and scikit-learn - nothing else is installed, so do not import other third-party packages. Do not add extra exercises or commentary after the code.
 
 Code:"""
