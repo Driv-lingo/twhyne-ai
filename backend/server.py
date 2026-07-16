@@ -1427,11 +1427,21 @@ def create_app():
         exceeding their sum.
         """
         try:
-            pairs = re.findall(r'\b(?:has|have|had|holds?|gets?|with)\s+'
-                               r'(\d+|' + '|'.join(_NUM_WORDS) + r')\s+'
-                               r'([a-z]{3,})', (prompt or '').lower())
+            stop = {'but', 'and', 'the', 'way', 'ways', 'more', 'less',
+                    'then', 'each', 'total', 'now', 'left', 'people',
+                    'them', 'they'}
+            raw = re.findall(r'\b(?:has|have|had|holds?|gets?|with)\s+'
+                             r'(\d+|' + '|'.join(_NUM_WORDS) + r')'
+                             r'(?:\s+([a-z]{3,}))?', (prompt or '').lower())
+            # Bare counts ("johnny has 3") inherit the unit in context when
+            # exactly one real unit is named anywhere in the question.
+            units_named = {u for _, u in raw if u and u not in stop}
             totals = {}
-            for n, unit in pairs:
+            for n, unit in raw:
+                if not unit or unit in stop:
+                    unit = next(iter(units_named)) if len(units_named) == 1 else None
+                if not unit:
+                    continue
                 v = _NUM_WORDS.get(n) or (int(n) if n.isdigit() else 0)
                 totals.setdefault(unit, []).append(v)
             for unit, vals in totals.items():
