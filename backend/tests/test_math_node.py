@@ -70,3 +70,34 @@ def test_extraction_helpers():
 def test_non_math_returns_none():
     # Non-math prompts must fall through (router handles them elsewhere).
     assert _node()._try_sympy("How can I build a fence for a giraffe?") is None
+
+
+def test_quadratic_shows_factoring_work():
+    # The step-by-step the user asked to "bake in": a factorable quadratic
+    # shows the standard form, the factorization, and the zero-product step,
+    # then the answer -- all derived by SymPy, so it cannot be fabricated.
+    out = _node()._try_sympy("solve x^2 + 5x + 6 = 0")
+    assert "Working" in out and "Answer" in out
+    assert "Factor" in out
+    assert "(x + 2)" in out.replace("\\left", "").replace("\\right", "").replace(" ", "") \
+        or "x+2" in out.replace("\\left(", "").replace("\\right)", "").replace(" ", "")
+    assert "-2" in out and "-3" in out
+
+
+def test_irreducible_quadratic_shows_formula():
+    out = _node()._try_sympy("solve x^2 - 2 = 0")
+    assert "quadratic formula" in out
+    assert "Discriminant" in out
+
+
+def test_derivative_shows_term_by_term():
+    out = _node()._try_sympy("derivative of x^3 + 2x^2 + x")
+    assert "term by term" in out
+    assert "3 x^{2} + 4 x + 1" in out  # the final answer is still present
+
+
+def test_plain_arithmetic_stays_concise():
+    # No fabricated "steps" for a bare sum -- concise answer, no Working block.
+    out = _node()._try_sympy("what is 3500 + 4250")
+    assert "Working" not in out
+    assert "7750" in out

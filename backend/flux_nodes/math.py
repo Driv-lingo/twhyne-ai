@@ -119,6 +119,85 @@ class MathNode(FluxNode):
         # Node is available as long as SymPy loaded; the LLM fallback is a bonus.
         self.is_available = SYMPY_AVAILABLE
 
+    # -- Worked steps (deterministic, no model) ----------------------------
+    # SymPy derives the intermediate steps EXACTLY, so "showing the work" can
+    # never hallucinate a bogus derivation - the steps are as trustworthy as
+    # the final answer. Any failure to build steps degrades to the bare
+    # answer; the answer is never withheld because a step-string broke.
+    def _with_steps(self, steps, answer: str) -> str:
+        if not steps:
+            return answer
+        body = "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1))
+        return f"**Working**\n{body}\n\n**Answer**\n{answer}"
+
+    def _solve_steps(self, equation, target, ltx):
+        try:
+            from sympy import Eq, factor, Poly, sqrt, simplify
+            lhs = equation.lhs - equation.rhs if isinstance(equation, Eq) else equation
+            steps = [f"Move every term to one side: $${ltx(lhs)} = 0$$"]
+            factored = factor(lhs)
+            if factored != lhs and getattr(factored, 'is_Mul', False):
+                steps.append(f"Factor: $${ltx(factored)} = 0$$")
+                steps.append("A product is zero only when a factor is zero, "
+                             "so set each factor to $0$ and solve.")
+                return steps
+            # Not nicely factorable: show the quadratic formula if degree 2.
+            try:
+                p = Poly(lhs, target)
+            except Exception:
+                p = None
+            if p is not None and p.degree() == 2:
+                a, b, c = p.all_coeffs()
+                steps.append(
+                    f"This is quadratic with $a={ltx(a)}$, $b={ltx(b)}$, "
+                    f"$c={ltx(c)}$; apply the quadratic formula "
+                    f"$$x = \\frac{{-b \\pm \\sqrt{{b^2 - 4ac}}}}{{2a}}$$")
+                disc = simplify(b*b - 4*a*c)
+                steps.append(f"Discriminant $b^2 - 4ac = {ltx(disc)}$, so "
+                             f"$\\sqrt{{b^2-4ac}} = {ltx(sqrt(disc))}$.")
+                steps.append("Substitute and simplify to get the root(s).")
+                return steps
+            if p is not None and p.degree() == 1:
+                a, b = p.all_coeffs()
+                steps.append(f"Isolate ${ltx(target)}$: subtract ${ltx(b)}$ "
+                             f"then divide by ${ltx(a)}$.")
+                return steps
+            return steps
+        except Exception:
+            return []
+
+    def _derivative_steps(self, expr, var, ltx):
+        try:
+            from sympy import Add, diff
+            terms = expr.as_ordered_terms() if isinstance(expr, Add) else [expr]
+            if len(terms) <= 1:
+                return []  # single term: the answer already IS the work
+            steps = ["Differentiate term by term "
+                     "(the derivative of a sum is the sum of the derivatives):"]
+            for tm in terms:
+                steps.append(f"$$\\frac{{d}}{{d{var}}}\\left({ltx(tm)}\\right) "
+                             f"= {ltx(diff(tm, var))}$$")
+            steps.append("Add the results.")
+            return steps
+        except Exception:
+            return []
+
+    def _integral_steps(self, expr, var, ltx):
+        try:
+            from sympy import Add, integrate
+            terms = expr.as_ordered_terms() if isinstance(expr, Add) else [expr]
+            if len(terms) <= 1:
+                return []
+            steps = ["Integrate term by term "
+                     "(the integral of a sum is the sum of the integrals):"]
+            for tm in terms:
+                steps.append(f"$$\\int {ltx(tm)}\\, d{var} "
+                             f"= {ltx(integrate(tm, var))}$$")
+            steps.append("Add the results and a single constant $+\\,C$.")
+            return steps
+        except Exception:
+            return []
+
     # -- SymPy path ---------------------------------------------------------
     def _try_sympy(self, query: str) -> Optional[str]:
         if not SYMPY_AVAILABLE:
@@ -137,16 +216,18 @@ class MathNode(FluxNode):
             if m:
                 expr = parse_expr(m.group(1), transformations=_TRANSFORMS, local_dict=local)
                 var = symbols(m.group(2)) if m.group(2) else x
-                return (f"$$\\frac{{d}}{{d{var}}}\\left({_ltx(expr)}\\right)"
-                        f" = {_ltx(diff(expr, var))}$$")
+                answer = (f"$$\\frac{{d}}{{d{var}}}\\left({_ltx(expr)}\\right)"
+                          f" = {_ltx(diff(expr, var))}$$")
+                return self._with_steps(self._derivative_steps(expr, var, _ltx), answer)
 
             # Integral
             m = re.search(r'(?:integral|integrate)\s+(?:of\s+)?(.+?)(?:\s+with respect to\s+(\w+))?$', ql)
             if m:
                 expr = parse_expr(m.group(1), transformations=_TRANSFORMS, local_dict=local)
                 var = symbols(m.group(2)) if m.group(2) else x
-                return (f"$$\\int {_ltx(expr)}\\, d{var}"
-                        f" = {_ltx(integrate(expr, var))} + C$$")
+                answer = (f"$$\\int {_ltx(expr)}\\, d{var}"
+                          f" = {_ltx(integrate(expr, var))} + C$$")
+                return self._with_steps(self._integral_steps(expr, var, _ltx), answer)
 
             # Equation solving
             if 'solve' in ql or ('=' in q and '==' not in q):
@@ -171,7 +252,9 @@ class MathNode(FluxNode):
                 target = syms[0] if syms else x
                 sol = solve(equation, target)
                 sol_tex = ",\\; ".join(_ltx(s) for s in sol) if isinstance(sol, list) else _ltx(sol)
-                return f"$${_ltx(target)} = {sol_tex}$$"
+                answer = f"$${_ltx(target)} = {sol_tex}$$"
+                return self._with_steps(
+                    self._solve_steps(equation, target, _ltx), answer)
 
             # Plain expression -> exact value. Extract the expression from the
             # sentence first so surrounding words never become symbols.
