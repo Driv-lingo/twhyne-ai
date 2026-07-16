@@ -2004,7 +2004,20 @@ def create_app():
                     # (observed live: a Dubai itinerary recommending closed
                     # attractions as fact). Every planner answer carries the
                     # boundary and its assumptions.
-                    if specialist.node_id.startswith('planner'):
+                    _planner = specialist.node_id.startswith('planner')
+                    _stale = []
+                    if _planner:
+                        # Seeded, dated stale-venue flags FIRST (specific,
+                        # actionable), then the general boundary. Deterministic,
+                        # offline - not a live check; each flag carries its
+                        # recorded date so it can't be read as one.
+                        try:
+                            from planner_facts import (stale_venue_note,
+                                                       stale_venue_flags)
+                            _stale = [p for p, _ in stale_venue_flags(out_text)]
+                            out_text += stale_venue_note(out_text)
+                        except Exception:
+                            pass
                         out_text += (
                             "\n\n⚠ **Unverified plan — read before using:** "
                             "this was generated from the model's training "
@@ -2022,9 +2035,9 @@ def create_app():
                                     'grounded': False,
                                     'gates': ({'verdict': 'answered',
                                                'how': 'generated',
-                                               'unverified_plan': True}
-                                              if specialist.node_id.startswith('planner')
-                                              else None)})
+                                               'unverified_plan': True,
+                                               'stale_venues': _stale}
+                                              if _planner else None)})
 
             # ---- RETRIEVAL-FIRST ROUTING ---------------------------------
             # Answer cache: only for fresh questions (no conversation
