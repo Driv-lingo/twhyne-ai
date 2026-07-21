@@ -258,6 +258,38 @@ function App() {
       .catch(() => {});
   }, []);
 
+  // ---- Report an issue / feedback ------------------------------------
+  const [showReport, setShowReport] = useState(false);
+  const [reportCat, setReportCat] = useState('bug');
+  const [reportMsg, setReportMsg] = useState('');
+  const [reportPreview, setReportPreview] = useState(null);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportResult, setReportResult] = useState('');
+  const openReport = useCallback(() => {
+    setReportResult(''); setReportMsg(''); setShowReport(true);
+    axios.get('http://127.0.0.1:5002/api/feedback/preview')
+      .then(r => setReportPreview(r.data))
+      .catch(() => setReportPreview({ note: 'Could not load system details.' }));
+  }, []);
+  const submitReport = useCallback(async () => {
+    if (!reportMsg.trim()) { setReportResult('Please describe the issue first.'); return; }
+    setReportBusy(true); setReportResult('');
+    try {
+      const r = await axios.post('http://127.0.0.1:5002/api/feedback/submit',
+        { category: reportCat, message: reportMsg.trim() });
+      if (r.data && r.data.success) {
+        setReportResult('sent:' + (r.data.ref || ''));
+        setReportMsg('');
+      } else {
+        setReportResult((r.data && r.data.error) || 'Could not send the report.');
+      }
+    } catch (e) {
+      const err = (e.response && e.response.data && e.response.data.error) || 'Could not reach the support server.';
+      setReportResult(err);
+    }
+    setReportBusy(false);
+  }, [reportCat, reportMsg]);
+
   const [timers, setTimers] = useState([]);
   const seenElapsedRef = useRef(new Set());
   const firstTimerPollRef = useRef(true);
@@ -819,12 +851,60 @@ function App() {
             <span className="status-label">Nodes:</span>
             <span className="status-value">{Object.values(nodeStatus).filter(n => n.status === 'online').length} Online</span>
         </div>
+          <div className="help-button" onClick={openReport} aria-label="Report an issue"
+               title="Report an issue or send feedback" style={{fontSize:'0.8em', fontFamily:'IBM Plex Mono, monospace'}}>
+            Report
+          </div>
           <div className="help-button" onClick={() => setShowHelpOverlay(!showHelpOverlay)} aria-label="Help">
             <FaQuestion />
           </div>
         </div>
       </header>
-      
+
+      {showReport && (
+        <div className="help-overlay" onClick={() => setShowReport(false)}>
+          <div className="help-content" onClick={(e) => e.stopPropagation()} style={{maxWidth:560}}>
+            <h2>Report an issue</h2>
+            <button className="close-help" onClick={() => setShowReport(false)}>×</button>
+            {reportResult.startsWith('sent:') ? (
+              <div style={{padding:'12px 0'}}>
+                <p>Thanks — your report was sent. Reference <b>{reportResult.slice(5)}</b>.</p>
+                <p style={{opacity:0.7, fontSize:'0.9em'}}>You can track its status and see our reply in your account at twhyne.com/account.</p>
+                <button className="send-button" onClick={() => setShowReport(false)}>Close</button>
+              </div>
+            ) : (
+              <div>
+                <p style={{opacity:0.8, fontSize:'0.92em'}}>Tell us what went wrong or what you'd like to see. We reply from a person, and you can track it in your account.</p>
+                <label style={{display:'block', margin:'10px 0 4px', fontSize:'0.85em', opacity:0.8}}>Type</label>
+                <select value={reportCat} onChange={(e) => setReportCat(e.target.value)}
+                        style={{width:'100%', padding:8, marginBottom:10}}>
+                  <option value="bug">Bug</option>
+                  <option value="feedback">Feedback / idea</option>
+                  <option value="question">Question</option>
+                  <option value="security">Security concern</option>
+                  <option value="other">Other</option>
+                </select>
+                <textarea value={reportMsg} onChange={(e) => setReportMsg(e.target.value)}
+                          rows={5} placeholder="What happened? What did you expect instead?"
+                          style={{width:'100%', padding:10, resize:'vertical'}} />
+                <details style={{margin:'12px 0', fontSize:'0.85em'}}>
+                  <summary style={{cursor:'pointer', opacity:0.8}}>Exactly what's sent with your report</summary>
+                  <p style={{opacity:0.7, margin:'8px 0'}}>{reportPreview ? reportPreview.note : 'Loading…'}</p>
+                  <pre style={{background:'rgba(0,0,0,0.25)', padding:10, borderRadius:6, overflowX:'auto', fontSize:'0.85em'}}>
+{reportPreview ? JSON.stringify(reportPreview.payload || {}, null, 2) : ''}
+                  </pre>
+                  <p style={{opacity:0.6, margin:0}}>No prompts, documents, or knowledge-base content are included.</p>
+                </details>
+                {reportResult && <p style={{color:'#e06a5c', fontSize:'0.9em'}}>{reportResult}</p>}
+                <button className="send-button" onClick={submitReport} disabled={reportBusy}>
+                  {reportBusy ? 'Sending…' : 'Send report'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showHelpOverlay && (
         <div className="help-overlay">
           <div className="help-content">

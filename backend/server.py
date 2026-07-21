@@ -3093,6 +3093,96 @@ def create_app():
         """Which build is this? Ends the 'am I on the new image?' guesswork."""
         return jsonify({'build': os.environ.get('TWHYNE_BUILD', 'dev')[:12]})
 
+    # ---- User feedback / bug reports (disclosed, consent-gated egress) ----
+    # Privacy contract: a report carries the user's typed message plus SAFE
+    # system facts only - build, platform, cpu/ram, node availability, audit
+    # chain status. NEVER prompts, document/KB content, sources, or secrets.
+    # The user is shown the exact payload before anything leaves the machine.
+    def _feedback_payload():
+        import platform as _pf
+        nodes = {}
+        try:
+            for nid in node_registry.get_all_node_ids():
+                n = node_registry.get_node(nid)
+                nodes[nid] = bool(n and getattr(n, 'is_available', False))
+        except Exception:
+            nodes = {}
+        mem_gb = None
+        try:
+            mem_gb = round(os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+                           / (1024 ** 3), 1)
+        except Exception:
+            mem_gb = None
+        try:
+            usable = len(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else os.cpu_count()
+        except Exception:
+            usable = os.cpu_count()
+        chain_ok = True
+        try:
+            chain_ok, _, _ = _audit_verify()
+        except Exception:
+            pass
+        return {
+            'build': os.environ.get('TWHYNE_BUILD', 'dev')[:12],
+            'platform': f"{_pf.system()} {_pf.release()} ({_pf.machine()})",
+            'python': _pf.python_version(),
+            'cpu_logical': os.cpu_count(),
+            'cpu_usable': usable,
+            'ram_gb': mem_gb,
+            'nodes_available': nodes,
+            'audit_chain_ok': chain_ok,
+        }
+
+    @app.route('/api/feedback/preview', methods=['GET'])
+    def feedback_preview():
+        """Return the EXACT metadata that would be sent, so the UI can show it
+        before the user consents. Nothing leaves the machine on this call."""
+        return jsonify({
+            'payload': _feedback_payload(),
+            'has_license': bool(os.environ.get('SNF_LICENSE_KEY', '').strip()),
+            'note': ('This is exactly what is sent, plus your typed message. '
+                     'No prompts, documents, knowledge-base content, or sources '
+                     'are included.'),
+        })
+
+    @app.route('/api/feedback/submit', methods=['POST'])
+    def feedback_submit():
+        """Forward a report to the licensing/support server over the same
+        disclosed egress used for license validation. Audited locally."""
+        data = request.get_json(silent=True) or {}
+        message = (data.get('message') or '').strip()
+        category = (data.get('category') or 'bug').strip().lower()
+        if not message:
+            return jsonify({'error': 'A description is required.'}), 400
+        key = os.environ.get('SNF_LICENSE_KEY', '').strip()
+        if not key:
+            return jsonify({'error': 'No license key is configured on this '
+                                     'install, so a report cannot be filed.'}), 400
+        api = os.environ.get('LICENSE_API_URL', 'https://twhyne.com').rstrip('/')
+        import json as _json
+        body = _json.dumps({
+            'license_key': key,
+            'category': category,
+            'message': message[:8000],
+            'metadata': _feedback_payload(),
+        }).encode()
+        try:
+            req = _urlreq.Request(api + '/api/feedback', data=body,
+                                  headers={'Content-Type': 'application/json'})
+            with _urlreq.urlopen(req, timeout=15) as resp:
+                payload = _json.loads(resp.read().decode() or '{}')
+        except Exception as e:
+            return jsonify({'error': f'Could not reach the support server: {e}'}), 502
+        if not payload.get('success'):
+            return jsonify({'error': payload.get('message',
+                                                 'The report was not accepted.')}), 502
+        try:
+            _audit_append({'node_id': 'feedback', 'verdict': 'feedback.submitted',
+                           'sources': [payload.get('ref', '')]})
+        except Exception:
+            pass
+        return jsonify({'success': True, 'ref': payload.get('ref')})
+
     # ---- Conversations: kernel-owned persistence ----------------------
     # Chats live in the same mounted volume as knowledge bases - they
     # survive browsers, restarts and image updates, back up with the rest
