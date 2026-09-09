@@ -108,6 +108,34 @@ REM TWHYNE_MAX_RESIDENT=2 to keep BOTH models loaded - eliminates the
 REM multi-minute swap between code and chat questions.
 if "%TWHYNE_MEM%"=="" set TWHYNE_MEM=12g
 if "%TWHYNE_MAX_RESIDENT%"=="" set TWHYNE_MAX_RESIDENT=1
+
+REM -- Fit the limit to the Docker VM ---------------------------
+REM Docker Desktop runs containers inside a fixed-size Linux VM (default:
+REM half of host RAM). A -m limit LARGER than the VM is not enforced by
+REM anything real: the VM itself runs out of memory while the 7B model
+REM loads and the whole engine drops ("unexpected EOF"). Cap the limit
+REM at VM size minus 1 GB, and say so when the VM is too small.
+set VM_GB=
+for /f "usebackq delims=" %%m in (`powershell -NoProfile -Command "try { [math]::Floor([double](docker info --format '{{.MemTotal}}') / 1GB) } catch { 0 }"`) do set VM_GB=%%m
+if not defined VM_GB set VM_GB=0
+if %VM_GB% GTR 0 (
+    set /a CAP_GB=%VM_GB%-1
+    for /f "delims=g" %%v in ("%TWHYNE_MEM%") do set REQ_GB=%%v
+    if !REQ_GB! GTR !CAP_GB! (
+        set TWHYNE_MEM=!CAP_GB!g
+        echo Docker VM has %VM_GB% GB; container memory limit set to !CAP_GB!g.
+    )
+    if %VM_GB% LSS 8 (
+        echo.
+        echo WARNING: Docker's VM only has %VM_GB% GB of memory. A 7B model needs about
+        echo   6 GB to load and answer. Give Docker more memory: create or edit
+        echo   %USERPROFILE%\.wslconfig with
+        echo     [wsl2]
+        echo     memory=12GB
+        echo   then run "wsl --shutdown" and start Docker Desktop again.
+        echo.
+    )
+)
 docker run --name twhyne-ai ^
   -e SNF_LICENSE_KEY=%SNF_LICENSE_KEY% ^
   -e LICENSE_API_URL=https://twhyne.com ^
@@ -124,8 +152,28 @@ docker run --name twhyne-ai ^
 echo.
 echo ============================================================
 echo  Twhyne AI has stopped.
-echo  If your license was rejected, delete this file and re-run:
-echo    %LICENSE_FILE%
+echo ============================================================
+REM Say WHY. The container is kept (no --rm) so its exit state survives.
+set EXIT_INFO=
+for /f "usebackq delims=" %%s in (`docker inspect twhyne-ai --format "{{.State.ExitCode}} oom={{.State.OOMKilled}}" 2^>nul`) do set EXIT_INFO=%%s
+if defined EXIT_INFO (
+    echo  Container exit: !EXIT_INFO!
+    echo !EXIT_INFO! | findstr /C:"oom=true" >nul && (
+        echo  The container ran out of memory ^(limit %TWHYNE_MEM%^).
+    )
+    echo !EXIT_INFO! | findstr /R /C:"^137 " >nul && (
+        echo  Killed ^(exit 137^): out of memory, or Docker's VM was reset.
+    )
+    echo !EXIT_INFO! | findstr /R /C:"^1 " >nul && (
+        echo  If the log above says the license was rejected, delete this file and re-run:
+        echo    %LICENSE_FILE%
+    )
+) else (
+    echo  Docker itself stopped responding ^(the engine or its VM went down^).
+    echo  This is almost always the Docker VM running out of memory. Check
+    echo  Docker Desktop ^> Settings ^> Resources, or %USERPROFILE%\.wslconfig.
+)
+echo  Full log: docker logs twhyne-ai
 echo ============================================================
 pause
 exit /b 0

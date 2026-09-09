@@ -77,6 +77,51 @@ def stopping_criteria_for(rid):
     return StoppingCriteriaList([lambda input_ids, logits: is_cancelled(rid)])
 
 _LOCAL_CACHE_DIR = Path('/app/model_cache')
+_COPY_CHUNK = 64 << 20          # 64 MiB reads
+_COPY_FLUSH_EVERY = 256 << 20   # fsync + drop page cache every 256 MiB
+
+
+def _bounded_copy(src: Path, dst: Path):
+    """Copy a multi-GB model file WITHOUT letting the page cache balloon.
+
+    shutil.copyfile streams the whole file through the kernel page cache:
+    ~4.4 GB read from the bind mount plus ~4.4 GB of dirty pages for the
+    destination, all charged to this container's memory cgroup, right
+    before llama.cpp mmaps another 4.4 GB. Inside Docker Desktop's VM
+    (fixed-size, often 8 GB) that spike is enough to take down the VM
+    itself - observed as `error waiting for container: unexpected EOF`
+    the moment the model starts loading. Here the copy flushes and drops
+    both files' cached pages every 256 MiB, so peak memory stays a few
+    hundred MB regardless of model size. Slightly slower; runs once.
+    """
+    fadvise = getattr(os, 'posix_fadvise', None)
+    dontneed = getattr(os, 'POSIX_FADV_DONTNEED', None)
+    with open(src, 'rb') as fin, open(dst, 'wb') as fout:
+        since_flush = 0
+        while True:
+            chunk = fin.read(_COPY_CHUNK)
+            if not chunk:
+                break
+            fout.write(chunk)
+            since_flush += len(chunk)
+            if since_flush >= _COPY_FLUSH_EVERY:
+                fout.flush()
+                os.fsync(fout.fileno())
+                if fadvise and dontneed is not None:
+                    try:
+                        fadvise(fout.fileno(), 0, 0, dontneed)
+                        fadvise(fin.fileno(), 0, 0, dontneed)
+                    except OSError:
+                        pass
+                since_flush = 0
+        fout.flush()
+        os.fsync(fout.fileno())
+        if fadvise and dontneed is not None:
+            try:
+                fadvise(fout.fileno(), 0, 0, dontneed)
+                fadvise(fin.fileno(), 0, 0, dontneed)
+            except OSError:
+                pass
 
 
 def _fast_local_copy(path: str):
@@ -95,7 +140,7 @@ def _fast_local_copy(path: str):
             return str(src), False
         logger.info(f"Caching {src.name} to local disk for fast swaps (one-time copy)...")
         tmp = dest.with_suffix('.part')
-        shutil.copyfile(src, tmp)
+        _bounded_copy(src, tmp)
         tmp.rename(dest)
         return str(dest), True
     except Exception as e:

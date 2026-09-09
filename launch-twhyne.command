@@ -126,6 +126,26 @@ echo "============================================================"
 # Memory: 12g default. Machines with 32GB+ RAM can set TWHYNE_MEM=18g and
 # TWHYNE_MAX_RESIDENT=2 to keep BOTH models loaded - eliminates the
 # multi-minute swap between code and chat questions.
+# Fit the limit to Docker's VM: a -m larger than the VM is not enforced by
+# anything real - the VM itself runs out of memory while the model loads and
+# the engine drops ("unexpected EOF"). Cap at VM size minus 1 GB.
+TWHYNE_MEM="${TWHYNE_MEM:-12g}"
+VM_GB=$(docker info --format '{{.MemTotal}}' 2>/dev/null | awk '{printf "%d", $1/1073741824}')
+if [ -n "$VM_GB" ] && [ "$VM_GB" -gt 0 ]; then
+    CAP_GB=$((VM_GB - 1))
+    REQ_GB=${TWHYNE_MEM%g}
+    if [ "$REQ_GB" -gt "$CAP_GB" ] 2>/dev/null; then
+        TWHYNE_MEM="${CAP_GB}g"
+        echo "Docker VM has ${VM_GB} GB; container memory limit set to ${TWHYNE_MEM}."
+    fi
+    if [ "$VM_GB" -lt 8 ]; then
+        echo ""
+        echo "WARNING: Docker's VM only has ${VM_GB} GB of memory. A 7B model needs about"
+        echo "  6 GB to load and answer. Raise it in Docker Desktop > Settings > Resources."
+        echo ""
+    fi
+fi
+
 docker run --name twhyne-ai \
   -e SNF_LICENSE_KEY="$SNF_LICENSE_KEY" \
   -e LICENSE_API_URL=https://twhyne.com \
@@ -136,9 +156,21 @@ docker run --name twhyne-ai \
   -v twhyne_modelcache:/app/model_cache \
   -p 3000:3000 \
   -p 5002:5002 \
-  -m "${TWHYNE_MEM:-12g}" \
+  -m "$TWHYNE_MEM" \
   "$IMAGE"
 
 echo ""
-echo "Twhyne AI has stopped. If your license was rejected, delete"
-echo "$LICENSE_FILE and re-run."
+echo "Twhyne AI has stopped."
+EXIT_INFO=$(docker inspect twhyne-ai --format '{{.State.ExitCode}} oom={{.State.OOMKilled}}' 2>/dev/null)
+if [ -n "$EXIT_INFO" ]; then
+    echo "Container exit: $EXIT_INFO"
+    case "$EXIT_INFO" in
+        *oom=true*) echo "The container ran out of memory (limit $TWHYNE_MEM)." ;;
+        137*)       echo "Killed (exit 137): out of memory, or Docker's VM was reset." ;;
+        1\ *)       echo "If the log above says the license was rejected, delete $LICENSE_FILE and re-run." ;;
+    esac
+else
+    echo "Docker itself stopped responding (the engine or its VM went down) -"
+    echo "almost always the Docker VM running out of memory. Check Docker Desktop > Settings > Resources."
+fi
+echo "Full log: docker logs twhyne-ai"
