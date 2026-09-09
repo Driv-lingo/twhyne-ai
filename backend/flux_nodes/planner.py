@@ -50,10 +50,17 @@ class PlannerNode(FluxNode):
             # resident model and may have evicted ours for another node.
             from .shared_model import get_shared_model
             model = get_shared_model(self.model_path)
+            import time as _t
+            _t0 = _t.time()
             response = model(
                 enhanced_prompt, max_tokens=1024, temperature=0.7, top_p=0.9,
                 stop=["</s>"], echo=False,
             )
+            try:
+                from cognition import trace as _trace
+                _trace.model_call(self.node_id, response.get('usage'), _t.time() - _t0)
+            except Exception:
+                pass
             return response["choices"][0]["text"].strip()
         except Exception as e:
             logger.exception(f"Error generating plan: {e}")

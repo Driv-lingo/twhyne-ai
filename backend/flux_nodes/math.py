@@ -299,8 +299,15 @@ class MathNode(FluxNode):
             # must serialize with other generations.
             with INFER_LOCK:
                 llm = get_shared_model(self.model_path)
+                import time as _t
+                _t0 = _t.time()
                 out = llm(f"Solve this math problem step by step and give the final numeric answer:\n{query}\nAnswer:",
                           max_tokens=768, stop=["</s>"], temperature=0.2, echo=False)
+                try:
+                    from cognition import trace as _trace
+                    _trace.model_call(self.node_id, out.get('usage'), _t.time() - _t0)
+                except Exception:
+                    pass
             return out['choices'][0]['text'].strip()
         except Exception as e:
             logger.error(f"Math LLM fallback error: {e}")

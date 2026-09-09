@@ -183,6 +183,9 @@ def ensure_corpus_dataset(base_url):
 
 def ask_twhyne(base_url, prompt, dataset_id=None, use_rag=False, role=None):
     payload = {"prompt": prompt}
+    mode = getattr(ask_twhyne, "mode", "current")
+    if mode not in ("plain", "current"):
+        payload["mode"] = mode        # honoured by the cognition layer (C/D)
     if role:
         payload["role"] = role
     if use_rag and dataset_id:
@@ -194,7 +197,7 @@ def ask_twhyne(base_url, prompt, dataset_id=None, use_rag=False, role=None):
     rid = f"bench-{int(time.time() * 1000)}"
     payload["client_request_id"] = rid
     try:
-        resp = _post(base_url + "/query", payload)
+        resp = _post(base_url + ("/query/plain" if mode == "plain" else "/query"), payload)
     except Exception:
         try:
             _post(base_url + "/cancel", {"client_request_id": rid}, timeout=15)
@@ -207,6 +210,9 @@ def ask_twhyne(base_url, prompt, dataset_id=None, use_rag=False, role=None):
     # retrieval evidence; REFUSED must carry none).
     ask_twhyne.last_gates = resp.get("gates")
     ask_twhyne.last_evidence = resp.get("evidence")
+    # Per-task trace (level, tier, model calls, tokens, timings, CPU/RAM)
+    # is what the A/B/C/D report is computed from.
+    ask_twhyne.last_trace = resp.get("trace")
     return text, resp.get("sources", []), resp.get("node_id", "")
 
 
@@ -297,8 +303,21 @@ def main():
                          "Exit code 1 on ANY failure - this is the CI "
                          "regression-gate mode: the deterministic slice runs "
                          "on every image build without model downloads.")
+    ap.add_argument("--mode", choices=["plain", "current", "structured", "full"],
+                    default="current",
+                    help="architecture condition on the SAME server/model: "
+                         "plain = bare model (A), current = today's pipeline (B), "
+                         "structured = WDA/state/router/verification without "
+                         "competency maturation (C), full = K<->R<->S (D).")
+    ap.add_argument("--tasks", default=None,
+                    help="alternative task file (e.g. workloads.json from "
+                         "generate_workloads.py); default tasks.json")
+    ap.add_argument("--out", default=None,
+                    help="where to write results (default benchmarks/results.json)")
     args = ap.parse_args()
     base = args.base_url.rstrip("/")
+    ask_twhyne.mode = args.mode
+    print(f"condition: {args.mode}")
 
     try:
         _get(base + "/status", timeout=10)
@@ -309,7 +328,8 @@ def main():
 
     # encoding matters: Windows defaults to cp1252, which turns the unicode
     # multiplication sign into mojibake ("47 Ã— 8,912") and broke math routing.
-    tasks = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
+    task_file = Path(args.tasks) if args.tasks else TASKS_FILE
+    tasks = json.loads(task_file.read_text(encoding="utf-8"))
     if args.categories:
         wanted = {c.strip() for c in args.categories.split(",") if c.strip()}
         unknown = wanted - set(tasks)
@@ -364,8 +384,10 @@ def main():
     results = []
     cat_stats = {}
     for category, items in tasks.items():
-        scorer = SCORERS[category]
         for task in items:
+            # Structural workloads name their scorer per task ('math' /
+            # 'general'); domain categories keep the table lookup.
+            scorer = SCORERS.get(task.get("scorer") or category) or score_contains
             t0 = time.time()
             try:
                 answer, sources, node_id = ask_twhyne(base, task["prompt"],
@@ -376,7 +398,7 @@ def main():
             elapsed = round(time.time() - t0, 1)
             low = answer.lower()
             slop = next((m for m in _SLOP_MARKERS if m in low), None)
-            limit = task.get("time_limit_s", _TIME_LIMITS.get(category))
+            limit = task.get("time_limit_s", _TIME_LIMITS.get(category, 300))
             if answer.startswith("[error:"):
                 # A runtime error is ALWAYS a failure - never let expected
                 # strings coincidentally matched inside an error message count
@@ -435,14 +457,21 @@ def main():
                             "elapsed_s": elapsed, "node_id": node_id,
                             "answer": answer, "sources": sources,
                             "gates": getattr(ask_twhyne, "last_gates", None),
-                            "evidence": getattr(ask_twhyne, "last_evidence", None)})
+                            "evidence": getattr(ask_twhyne, "last_evidence", None),
+                            "trace": getattr(ask_twhyne, "last_trace", None),
+                            "mode": getattr(ask_twhyne, "mode", "current"),
+                            # structural-workload metadata (None on tasks.json)
+                            "family": task.get("family"), "phase": task.get("phase"),
+                            "episode": task.get("episode"), "ood": task.get("ood", False),
+                            "expect_level": task.get("expect_level"),
+                            "operator": task.get("operator")})
 
     # Scripted scenario: cancellation must not poison the next answer.
     # (Skipped in --categories CI mode: it exercises the generation queue,
     # which needs real models.)
     if args.categories:
         _print_summary(cat_stats)
-        out = HERE / "results.json"
+        out = Path(args.out) if args.out else HERE / "results.json"
         out.write_text(json.dumps(results, indent=2))
         failed = sum(st["total"] - st["pass"] for st in cat_stats.values())
         print(f"\nDetailed results written to {out}")
@@ -462,7 +491,7 @@ def main():
 
     _print_summary(cat_stats)
 
-    out = HERE / "results.json"
+    out = Path(args.out) if args.out else HERE / "results.json"
     out.write_text(json.dumps(results, indent=2))
     print(f"\nDetailed results written to {out}")
 

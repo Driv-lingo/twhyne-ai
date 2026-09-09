@@ -107,6 +107,8 @@ class LanguageNode(FluxNode):
                 if dt > 0:
                     logger.info(f"Language generation: {toks} tokens in "
                                 f"{dt:.0f}s ({toks/dt:.1f} tok/s)")
+                from cognition import trace as _trace
+                _trace.model_call(self.node_id, response.get('usage'), dt)
             except Exception:
                 pass
             text = response['choices'][0]['text'].strip()

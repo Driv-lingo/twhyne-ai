@@ -1,0 +1,3006 @@
+{
+ "deterministic": [
+  {
+   "id": "det1",
+   "prompt": "Turn 68 Fahrenheit into Celsius.",
+   "family": "deterministic",
+   "phase": "warmup",
+   "episode": 1,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "20",
+   "operator": "f_to_c",
+   "expect_level": "K"
+  },
+  {
+   "id": "det2",
+   "prompt": "What is 10% of 1400?",
+   "family": "deterministic",
+   "phase": "warmup",
+   "episode": 2,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "140",
+   "operator": "percent_of",
+   "expect_level": "K"
+  },
+  {
+   "id": "det3",
+   "prompt": "What is 32 degrees Fahrenheit in Celsius?",
+   "family": "deterministic",
+   "phase": "warmup",
+   "episode": 3,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "0",
+   "operator": "f_to_c",
+   "expect_level": "K"
+  },
+  {
+   "id": "det4",
+   "prompt": "Find 10 per cent of 1140.",
+   "family": "deterministic",
+   "phase": "warmup",
+   "episode": 4,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "114",
+   "operator": "percent_of",
+   "expect_level": "K"
+  },
+  {
+   "id": "det5",
+   "prompt": "If I take 15% of 260, what do I get?",
+   "family": "deterministic",
+   "phase": "warmup",
+   "episode": 5,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "39",
+   "operator": "percent_of",
+   "expect_level": "K"
+  },
+  {
+   "id": "det6",
+   "prompt": "8 kilometers in miles?",
+   "family": "deterministic",
+   "phase": "warmup",
+   "episode": 6,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "4.97",
+   "operator": "km_to_mi",
+   "expect_level": "K"
+  },
+  {
+   "id": "det7",
+   "prompt": "Compute 15% \u00d7 1640.",
+   "family": "deterministic",
+   "phase": "warmup",
+   "episode": 7,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "246",
+   "operator": "percent_of",
+   "expect_level": "K"
+  },
+  {
+   "id": "det8",
+   "prompt": "Calculate 30 percent of 160.",
+   "family": "deterministic",
+   "phase": "warmup",
+   "episode": 8,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "48",
+   "operator": "percent_of",
+   "expect_level": "K"
+  },
+  {
+   "id": "det9",
+   "prompt": "50% of 380 equals what?",
+   "family": "deterministic",
+   "phase": "warmup",
+   "episode": 9,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "190",
+   "operator": "percent_of",
+   "expect_level": "K"
+  },
+  {
+   "id": "det10",
+   "prompt": "24 kilometers in miles?",
+   "family": "deterministic",
+   "phase": "warmup",
+   "episode": 10,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "14.91",
+   "operator": "km_to_mi",
+   "expect_level": "K"
+  },
+  {
+   "id": "det11",
+   "prompt": "Compute 20% \u00d7 1460.",
+   "family": "deterministic",
+   "phase": "warmup",
+   "episode": 11,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "292",
+   "operator": "percent_of",
+   "expect_level": "K"
+  },
+  {
+   "id": "det12",
+   "prompt": "Apply a 10 percent discount to $790.",
+   "family": "deterministic",
+   "phase": "warmup",
+   "episode": 12,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "711",
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "det13",
+   "prompt": "Convert 50\u00b0F to Celsius.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 13,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "10",
+   "operator": "f_to_c",
+   "expect_level": "S"
+  },
+  {
+   "id": "det14",
+   "prompt": "Compute 15% \u00d7 1300.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 14,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "195",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det15",
+   "prompt": "How many miles is 100 kilometres?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 15,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "62.14",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  },
+  {
+   "id": "det16",
+   "prompt": "How many miles is 100 kilometres?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 16,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "62.14",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  },
+  {
+   "id": "det17",
+   "prompt": "Apply a 15 percent discount to $940.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 17,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "799",
+   "operator": "discount",
+   "expect_level": "S"
+  },
+  {
+   "id": "det18",
+   "prompt": "Find 20 per cent of 1380.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 18,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "276",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det19",
+   "prompt": "14 F in C?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 19,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "-10",
+   "operator": "f_to_c",
+   "expect_level": "S"
+  },
+  {
+   "id": "det20",
+   "prompt": "Find 10 per cent of 1340.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 20,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "134",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det21",
+   "prompt": "What do I pay for a $240 product with 20% off?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 21,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "192",
+   "operator": "discount",
+   "expect_level": "S"
+  },
+  {
+   "id": "det22",
+   "prompt": "8 kilometers in miles?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 22,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "4.97",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  },
+  {
+   "id": "det23",
+   "prompt": "50% of 1500 equals what?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 23,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "750",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det24",
+   "prompt": "Turn 122 Fahrenheit into Celsius.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 24,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "50",
+   "operator": "f_to_c",
+   "expect_level": "S"
+  },
+  {
+   "id": "det25",
+   "prompt": "Convert 16 km to miles.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 25,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "9.94",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  },
+  {
+   "id": "det26",
+   "prompt": "Convert 14\u00b0F to Celsius.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 26,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "-10",
+   "operator": "f_to_c",
+   "expect_level": "S"
+  },
+  {
+   "id": "det27",
+   "prompt": "If I take 20% of 1680, what do I get?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 27,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "336",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det28",
+   "prompt": "80 kilometers in miles?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 28,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "49.71",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  },
+  {
+   "id": "det29",
+   "prompt": "Convert 100 km to miles.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 29,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "62.14",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  },
+  {
+   "id": "det30",
+   "prompt": "Convert 100 km to miles.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 30,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "62.14",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  },
+  {
+   "id": "det31",
+   "prompt": "Calculate 40 percent of 180.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 31,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "72",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det32",
+   "prompt": "What is 68 degrees Fahrenheit in Celsius?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 32,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "20",
+   "operator": "f_to_c",
+   "expect_level": "S"
+  },
+  {
+   "id": "det33",
+   "prompt": "How many miles is 160 kilometres?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 33,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "99.42",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  },
+  {
+   "id": "det34",
+   "prompt": "Find 12 per cent of 1180.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 34,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "141.6",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det35",
+   "prompt": "Turn 68 Fahrenheit into Celsius.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 35,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "20",
+   "operator": "f_to_c",
+   "expect_level": "S"
+  },
+  {
+   "id": "det36",
+   "prompt": "212 F in C?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 36,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "100",
+   "operator": "f_to_c",
+   "expect_level": "S"
+  },
+  {
+   "id": "det37",
+   "prompt": "Convert 40 km to miles.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 37,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "24.85",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  },
+  {
+   "id": "det38",
+   "prompt": "Calculate 12 percent of 420.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 38,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "50.4",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det39",
+   "prompt": "Apply a 10 percent discount to $670.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 39,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "603",
+   "operator": "discount",
+   "expect_level": "S"
+  },
+  {
+   "id": "det40",
+   "prompt": "Convert 104\u00b0F to Celsius.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 40,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "40",
+   "operator": "f_to_c",
+   "expect_level": "S"
+  },
+  {
+   "id": "det41",
+   "prompt": "$730 reduced by 25% is how much?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 41,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "547.5",
+   "operator": "discount",
+   "expect_level": "S"
+  },
+  {
+   "id": "det42",
+   "prompt": "Convert 68\u00b0F to Celsius.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 42,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "20",
+   "operator": "f_to_c",
+   "expect_level": "S"
+  },
+  {
+   "id": "det43",
+   "prompt": "How many miles is 160 kilometres?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 43,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "99.42",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  },
+  {
+   "id": "det44",
+   "prompt": "Convert 160 km to miles.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 44,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "99.42",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  },
+  {
+   "id": "det45",
+   "prompt": "Convert 160 km to miles.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 45,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "99.42",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  },
+  {
+   "id": "det46",
+   "prompt": "What do I pay for a $310 product with 10% off?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 46,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "279",
+   "operator": "discount",
+   "expect_level": "S"
+  },
+  {
+   "id": "det47",
+   "prompt": "A $480 item is 10% off. What is the sale price?",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 47,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "432",
+   "operator": "discount",
+   "expect_level": "S"
+  },
+  {
+   "id": "det48",
+   "prompt": "Calculate 5 percent of 1480.",
+   "family": "deterministic",
+   "phase": "mature",
+   "episode": 48,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "74",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det49",
+   "prompt": "Increase 100 by 20% and then by 20% again. What is the result?",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 49,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "144",
+   "operator": "compound_pct",
+   "expect_level": "K"
+  },
+  {
+   "id": "det50",
+   "prompt": "Increase 700 by 25% and then by 25% again. What is the result?",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 50,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "1093.75",
+   "operator": "compound_pct",
+   "expect_level": "K"
+  },
+  {
+   "id": "det51",
+   "prompt": "What is 100 Celsius in Kelvin?",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 51,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "373.15",
+   "operator": "c_to_k",
+   "expect_level": "K"
+  },
+  {
+   "id": "det52",
+   "prompt": "Convert 0\u00b0C to Kelvin.",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 52,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "273.15",
+   "operator": "c_to_k",
+   "expect_level": "K"
+  },
+  {
+   "id": "det53",
+   "prompt": "What is -40 Celsius in Kelvin?",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 53,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "233.15",
+   "operator": "c_to_k",
+   "expect_level": "K"
+  },
+  {
+   "id": "det54",
+   "prompt": "Convert 100\u00b0C to Kelvin.",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 54,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "373.15",
+   "operator": "c_to_k",
+   "expect_level": "K"
+  },
+  {
+   "id": "det55",
+   "prompt": "Apply a 10% rise twice to 600.",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 55,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "726",
+   "operator": "compound_pct",
+   "expect_level": "K"
+  },
+  {
+   "id": "det56",
+   "prompt": "Convert 25\u00b0C to Kelvin.",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 56,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "298.15",
+   "operator": "c_to_k",
+   "expect_level": "K"
+  },
+  {
+   "id": "det57",
+   "prompt": "Increase 650 by 25% and then by 25% again. What is the result?",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 57,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "1015.62",
+   "operator": "compound_pct",
+   "expect_level": "K"
+  },
+  {
+   "id": "det58",
+   "prompt": "Increase 550 by 25% and then by 25% again. What is the result?",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 58,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "859.38",
+   "operator": "compound_pct",
+   "expect_level": "K"
+  },
+  {
+   "id": "det59",
+   "prompt": "What is 37 Celsius in Kelvin?",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 59,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "310.15",
+   "operator": "c_to_k",
+   "expect_level": "K"
+  },
+  {
+   "id": "det60",
+   "prompt": "Apply a 20% rise twice to 450.",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 60,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "648",
+   "operator": "compound_pct",
+   "expect_level": "K"
+  },
+  {
+   "id": "det61",
+   "prompt": "Increase 400 by 25% and then by 25% again. What is the result?",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 61,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "625",
+   "operator": "compound_pct",
+   "expect_level": "K"
+  },
+  {
+   "id": "det62",
+   "prompt": "Convert 25\u00b0C to Kelvin.",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 62,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "298.15",
+   "operator": "c_to_k",
+   "expect_level": "K"
+  },
+  {
+   "id": "det63",
+   "prompt": "Convert 100\u00b0C to Kelvin.",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 63,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "373.15",
+   "operator": "c_to_k",
+   "expect_level": "K"
+  },
+  {
+   "id": "det64",
+   "prompt": "Apply a 20% rise twice to 850.",
+   "family": "deterministic",
+   "phase": "shift",
+   "episode": 64,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "1224",
+   "operator": "compound_pct",
+   "expect_level": "K"
+  },
+  {
+   "id": "det65",
+   "prompt": "What do I pay for a $490 product with 30% off?",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 65,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "343",
+   "operator": "discount",
+   "expect_level": "S"
+  },
+  {
+   "id": "det66",
+   "prompt": "Convert 122\u00b0F to Celsius.",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 66,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "50",
+   "operator": "f_to_c",
+   "expect_level": "S"
+  },
+  {
+   "id": "det67",
+   "prompt": "What do I pay for a $340 product with 10% off?",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 67,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "306",
+   "operator": "discount",
+   "expect_level": "S"
+  },
+  {
+   "id": "det68",
+   "prompt": "What do I pay for a $310 product with 20% off?",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 68,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "248",
+   "operator": "discount",
+   "expect_level": "S"
+  },
+  {
+   "id": "det69",
+   "prompt": "40% of 1700 equals what?",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 69,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "680",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det70",
+   "prompt": "Compute 10% \u00d7 1020.",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 70,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "102",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det71",
+   "prompt": "What do I pay for a $270 product with 25% off?",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 71,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "202.5",
+   "operator": "discount",
+   "expect_level": "S"
+  },
+  {
+   "id": "det72",
+   "prompt": "Turn 50 Fahrenheit into Celsius.",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 72,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "10",
+   "operator": "f_to_c",
+   "expect_level": "S"
+  },
+  {
+   "id": "det73",
+   "prompt": "160 kilometers in miles?",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 73,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "99.42",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  },
+  {
+   "id": "det74",
+   "prompt": "Calculate 12 percent of 460.",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 74,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "55.2",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det75",
+   "prompt": "Find 12 per cent of 1540.",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 75,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "184.8",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det76",
+   "prompt": "What do I pay for a $810 product with 30% off?",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 76,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "567",
+   "operator": "discount",
+   "expect_level": "S"
+  },
+  {
+   "id": "det77",
+   "prompt": "What is 68 degrees Fahrenheit in Celsius?",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 77,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "20",
+   "operator": "f_to_c",
+   "expect_level": "S"
+  },
+  {
+   "id": "det78",
+   "prompt": "Compute 5% \u00d7 1880.",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 78,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "94",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det79",
+   "prompt": "Calculate 50 percent of 1940.",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 79,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "970",
+   "operator": "percent_of",
+   "expect_level": "S"
+  },
+  {
+   "id": "det80",
+   "prompt": "Convert 40 km to miles.",
+   "family": "deterministic",
+   "phase": "return",
+   "episode": 80,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "24.85",
+   "operator": "km_to_mi",
+   "expect_level": "S"
+  }
+ ],
+ "compositional": [
+  {
+   "id": "comp1",
+   "prompt": "Take 25% of 400, then divide the result by 4.",
+   "family": "compositional",
+   "phase": "warmup",
+   "episode": 1,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "25",
+   "operator": "pct_then_div",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp2",
+   "prompt": "Convert 86\u00b0F to Celsius and then add 10 degrees.",
+   "family": "compositional",
+   "phase": "warmup",
+   "episode": 2,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "40",
+   "operator": "f_to_c_then_add",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp3",
+   "prompt": "Convert 40 km to miles, then take 10% of that distance.",
+   "family": "compositional",
+   "phase": "warmup",
+   "episode": 3,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "2.48",
+   "operator": "km_then_pct",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp4",
+   "prompt": "A $450 item is 25% off; then 10% sales tax is added. Final price?",
+   "family": "compositional",
+   "phase": "warmup",
+   "episode": 4,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "371.25",
+   "operator": "discount_then_tax",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp5",
+   "prompt": "Convert 160 km to miles, then take 10% of that distance.",
+   "family": "compositional",
+   "phase": "warmup",
+   "episode": 5,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "9.94",
+   "operator": "km_then_pct",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp6",
+   "prompt": "Convert 50\u00b0F to Celsius and then add 10 degrees.",
+   "family": "compositional",
+   "phase": "warmup",
+   "episode": 6,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "20",
+   "operator": "f_to_c_then_add",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp7",
+   "prompt": "Convert 50\u00b0F to Celsius and then add 5 degrees.",
+   "family": "compositional",
+   "phase": "warmup",
+   "episode": 7,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "15",
+   "operator": "f_to_c_then_add",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp8",
+   "prompt": "Convert 68\u00b0F to Celsius and then add 10 degrees.",
+   "family": "compositional",
+   "phase": "warmup",
+   "episode": 8,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "30",
+   "operator": "f_to_c_then_add",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp9",
+   "prompt": "Take 10% of 600, then divide the result by 5.",
+   "family": "compositional",
+   "phase": "warmup",
+   "episode": 9,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "12",
+   "operator": "pct_then_div",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp10",
+   "prompt": "Convert 40 km to miles, then take 50% of that distance.",
+   "family": "compositional",
+   "phase": "warmup",
+   "episode": 10,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "12.43",
+   "operator": "km_then_pct",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp11",
+   "prompt": "Take 20% of 400, then divide the result by 4.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 11,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "20",
+   "operator": "pct_then_div",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp12",
+   "prompt": "Take 10% of 900, then divide the result by 4.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 12,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "22.5",
+   "operator": "pct_then_div",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp13",
+   "prompt": "Take 10% of 800, then divide the result by 4.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 13,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "20",
+   "operator": "pct_then_div",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp14",
+   "prompt": "Convert 86\u00b0F to Celsius and then add 10 degrees.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 14,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "40",
+   "operator": "f_to_c_then_add",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp15",
+   "prompt": "Convert 160 km to miles, then take 10% of that distance.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 15,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "9.94",
+   "operator": "km_then_pct",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp16",
+   "prompt": "A $500 item is 10% off; then 8% sales tax is added. Final price?",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 16,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "486",
+   "operator": "discount_then_tax",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp17",
+   "prompt": "Convert 104\u00b0F to Celsius and then add 5 degrees.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 17,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "45",
+   "operator": "f_to_c_then_add",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp18",
+   "prompt": "Convert 80 km to miles, then take 25% of that distance.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 18,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "12.43",
+   "operator": "km_then_pct",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp19",
+   "prompt": "Take 20% of 700, then divide the result by 2.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 19,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "70",
+   "operator": "pct_then_div",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp20",
+   "prompt": "Convert 86\u00b0F to Celsius and then add 5 degrees.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 20,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "35",
+   "operator": "f_to_c_then_add",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp21",
+   "prompt": "Convert 86\u00b0F to Celsius and then add 5 degrees.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 21,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "35",
+   "operator": "f_to_c_then_add",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp22",
+   "prompt": "A $200 item is 20% off; then 5% sales tax is added. Final price?",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 22,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "168",
+   "operator": "discount_then_tax",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp23",
+   "prompt": "Take 50% of 800, then divide the result by 2.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 23,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "200",
+   "operator": "pct_then_div",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp24",
+   "prompt": "Convert 68\u00b0F to Celsius and then add 15 degrees.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 24,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "35",
+   "operator": "f_to_c_then_add",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp25",
+   "prompt": "Convert 160 km to miles, then take 25% of that distance.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 25,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "24.86",
+   "operator": "km_then_pct",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp26",
+   "prompt": "A $400 item is 10% off; then 8% sales tax is added. Final price?",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 26,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "388.8",
+   "operator": "discount_then_tax",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp27",
+   "prompt": "A $150 item is 25% off; then 8% sales tax is added. Final price?",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 27,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "121.5",
+   "operator": "discount_then_tax",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp28",
+   "prompt": "Take 25% of 900, then divide the result by 4.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 28,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "56.25",
+   "operator": "pct_then_div",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp29",
+   "prompt": "Convert 160 km to miles, then take 10% of that distance.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 29,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "9.94",
+   "operator": "km_then_pct",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp30",
+   "prompt": "Convert 80 km to miles, then take 50% of that distance.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 30,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "24.86",
+   "operator": "km_then_pct",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp31",
+   "prompt": "A $500 item is 10% off; then 5% sales tax is added. Final price?",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 31,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "472.5",
+   "operator": "discount_then_tax",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp32",
+   "prompt": "Convert 50\u00b0F to Celsius and then add 5 degrees.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 32,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "15",
+   "operator": "f_to_c_then_add",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp33",
+   "prompt": "A $300 item is 10% off; then 5% sales tax is added. Final price?",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 33,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "283.5",
+   "operator": "discount_then_tax",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp34",
+   "prompt": "A $200 item is 20% off; then 10% sales tax is added. Final price?",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 34,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "176",
+   "operator": "discount_then_tax",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp35",
+   "prompt": "A $400 item is 10% off; then 10% sales tax is added. Final price?",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 35,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "396",
+   "operator": "discount_then_tax",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp36",
+   "prompt": "Convert 160 km to miles, then take 25% of that distance.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 36,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "24.86",
+   "operator": "km_then_pct",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp37",
+   "prompt": "Take 25% of 100, then divide the result by 5.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 37,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "5",
+   "operator": "pct_then_div",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp38",
+   "prompt": "Convert 104\u00b0F to Celsius and then add 5 degrees.",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 38,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "45",
+   "operator": "f_to_c_then_add",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp39",
+   "prompt": "A $100 item is 25% off; then 5% sales tax is added. Final price?",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 39,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "78.75",
+   "operator": "discount_then_tax",
+   "expect_level": "R"
+  },
+  {
+   "id": "comp40",
+   "prompt": "A $150 item is 25% off; then 5% sales tax is added. Final price?",
+   "family": "compositional",
+   "phase": "mature",
+   "episode": 40,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "118.12",
+   "operator": "discount_then_tax",
+   "expect_level": "R"
+  }
+ ],
+ "hierarchical": [
+  {
+   "id": "hier1",
+   "prompt": "Plan a work day: tasks run one after another starting at 9:00. A takes 3 hours, B takes 1 hour. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "warmup",
+   "episode": 1,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "13",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier2",
+   "prompt": "Plan a work day: tasks run one after another starting at 9:00. A takes 3 hours, B takes 4 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "warmup",
+   "episode": 2,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "16",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier3",
+   "prompt": "Plan a work day: tasks run one after another starting at 8:00. A takes 2 hours, B takes 1 hour, C takes 2 hours, D takes 1 hour. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "warmup",
+   "episode": 3,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "14",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier4",
+   "prompt": "Plan a work day: tasks run one after another starting at 9:00. A takes 1 hour, B takes 2 hours, C takes 2 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "warmup",
+   "episode": 4,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "14",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier5",
+   "prompt": "Plan a work day: tasks run one after another starting at 10:00. A takes 3 hours, B takes 2 hours, C takes 3 hours, D takes 4 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "warmup",
+   "episode": 5,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "22",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier6",
+   "prompt": "Plan a work day: tasks run one after another starting at 9:00. A takes 2 hours, B takes 3 hours, C takes 3 hours, D takes 1 hour. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "warmup",
+   "episode": 6,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "18",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier7",
+   "prompt": "Plan a work day: tasks run one after another starting at 10:00. A takes 1 hour, B takes 1 hour. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "warmup",
+   "episode": 7,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "12",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier8",
+   "prompt": "Plan a work day: tasks run one after another starting at 8:00. A takes 2 hours, B takes 4 hours, C takes 2 hours, D takes 4 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "warmup",
+   "episode": 8,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "20",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier9",
+   "prompt": "Plan a work day: tasks run one after another starting at 10:00. A takes 4 hours, B takes 4 hours, C takes 4 hours, D takes 3 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 9,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "25",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier10",
+   "prompt": "Plan a work day: tasks run one after another starting at 8:00. A takes 2 hours, B takes 3 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 10,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "13",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier11",
+   "prompt": "Plan a work day: tasks run one after another starting at 8:00. A takes 2 hours, B takes 4 hours, C takes 3 hours, D takes 1 hour. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 11,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "18",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier12",
+   "prompt": "Plan a work day: tasks run one after another starting at 9:00. A takes 1 hour, B takes 3 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 12,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "13",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier13",
+   "prompt": "Plan a work day: tasks run one after another starting at 10:00. A takes 1 hour, B takes 1 hour. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 13,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "12",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier14",
+   "prompt": "Plan a work day: tasks run one after another starting at 8:00. A takes 3 hours, B takes 2 hours, C takes 3 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 14,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "16",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier15",
+   "prompt": "Plan a work day: tasks run one after another starting at 9:00. A takes 2 hours, B takes 2 hours, C takes 3 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 15,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "16",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier16",
+   "prompt": "Plan a work day: tasks run one after another starting at 9:00. A takes 3 hours, B takes 3 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 16,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "15",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier17",
+   "prompt": "Plan a work day: tasks run one after another starting at 8:00. A takes 3 hours, B takes 2 hours, C takes 1 hour, D takes 3 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 17,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "17",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier18",
+   "prompt": "Plan a work day: tasks run one after another starting at 9:00. A takes 2 hours, B takes 1 hour, C takes 3 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 18,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "15",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier19",
+   "prompt": "Plan a work day: tasks run one after another starting at 10:00. A takes 4 hours, B takes 3 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 19,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "17",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier20",
+   "prompt": "Plan a work day: tasks run one after another starting at 9:00. A takes 2 hours, B takes 2 hours, C takes 1 hour, D takes 1 hour. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 20,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "15",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier21",
+   "prompt": "Plan a work day: tasks run one after another starting at 10:00. A takes 2 hours, B takes 4 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 21,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "16",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier22",
+   "prompt": "Plan a work day: tasks run one after another starting at 9:00. A takes 4 hours, B takes 1 hour. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 22,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "14",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier23",
+   "prompt": "Plan a work day: tasks run one after another starting at 10:00. A takes 2 hours, B takes 1 hour, C takes 2 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 23,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "15",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier24",
+   "prompt": "Plan a work day: tasks run one after another starting at 9:00. A takes 4 hours, B takes 3 hours, C takes 4 hours, D takes 2 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 24,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "22",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier25",
+   "prompt": "Plan a work day: tasks run one after another starting at 10:00. A takes 2 hours, B takes 1 hour, C takes 4 hours, D takes 2 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 25,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "19",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier26",
+   "prompt": "Plan a work day: tasks run one after another starting at 8:00. A takes 1 hour, B takes 2 hours, C takes 1 hour, D takes 1 hour. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 26,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "13",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier27",
+   "prompt": "Plan a work day: tasks run one after another starting at 9:00. A takes 3 hours, B takes 1 hour. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 27,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "13",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier28",
+   "prompt": "Plan a work day: tasks run one after another starting at 9:00. A takes 1 hour, B takes 1 hour, C takes 2 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 28,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "13",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier29",
+   "prompt": "Plan a work day: tasks run one after another starting at 10:00. A takes 1 hour, B takes 4 hours, C takes 1 hour. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 29,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "16",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  },
+  {
+   "id": "hier30",
+   "prompt": "Plan a work day: tasks run one after another starting at 8:00. A takes 1 hour, B takes 1 hour, C takes 4 hours, D takes 3 hours. At what hour does the last task finish? Answer with the hour only.",
+   "family": "hierarchical",
+   "phase": "mature",
+   "episode": 30,
+   "scorer": "math",
+   "ood": false,
+   "expect_number": "17",
+   "operator": "sequential_schedule",
+   "expect_level": "R"
+  }
+ ],
+ "ambiguous": [
+  {
+   "id": "amb1",
+   "prompt": "A parcel weighs somewhere between 4 and 6 kg. Does it exceed the 5 kg limit?",
+   "family": "ambiguous",
+   "phase": "warmup",
+   "episode": 1,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  },
+  {
+   "id": "amb2",
+   "prompt": "Sally has 2 apples and Johnny has 3. They want to give 6 people one whole apple each. Is that possible? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "warmup",
+   "episode": 2,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "no"
+   ],
+   "must_not_contain": [
+    "yes,"
+   ],
+   "ambiguity": "conservation",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb3",
+   "prompt": "Sally has 3 apples and Johnny has 3. They want to give 8 people one whole apple each. Is that possible? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "warmup",
+   "episode": 3,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "no"
+   ],
+   "must_not_contain": [
+    "yes,"
+   ],
+   "ambiguity": "conservation",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb4",
+   "prompt": "A parcel weighs somewhere between 7 and 9 kg. Does it exceed the 8 kg limit?",
+   "family": "ambiguous",
+   "phase": "warmup",
+   "episode": 4,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  },
+  {
+   "id": "amb5",
+   "prompt": "A parcel weighs somewhere between 20 and 25 kg. Does it exceed the 8 kg limit? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "warmup",
+   "episode": 5,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "yes"
+   ],
+   "must_not_contain": [
+    "cannot determine"
+   ],
+   "ambiguity": "decision_irrelevant",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb6",
+   "prompt": "A parcel weighs somewhere between 30 and 34 kg. Does it exceed the 5 kg limit? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "warmup",
+   "episode": 6,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "yes"
+   ],
+   "must_not_contain": [
+    "cannot determine"
+   ],
+   "ambiguity": "decision_irrelevant",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb7",
+   "prompt": "A parcel weighs somewhere between 30 and 34 kg. Does it exceed the 5 kg limit? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "warmup",
+   "episode": 7,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "yes"
+   ],
+   "must_not_contain": [
+    "cannot determine"
+   ],
+   "ambiguity": "decision_irrelevant",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb8",
+   "prompt": "A parcel weighs somewhere between 7 and 9 kg. Does it exceed the 8 kg limit?",
+   "family": "ambiguous",
+   "phase": "warmup",
+   "episode": 8,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  },
+  {
+   "id": "amb9",
+   "prompt": "Sally has 3 apples and Johnny has 3. They want to give 10 people one whole apple each. Is that possible? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 9,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "no"
+   ],
+   "must_not_contain": [
+    "yes,"
+   ],
+   "ambiguity": "conservation",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb10",
+   "prompt": "A parcel weighs somewhere between 3 and 8 kg. Does it exceed the 5 kg limit?",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 10,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  },
+  {
+   "id": "amb11",
+   "prompt": "Sally has 2 apples and Johnny has 3. They want to give 6 people one whole apple each. Is that possible? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 11,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "no"
+   ],
+   "must_not_contain": [
+    "yes,"
+   ],
+   "ambiguity": "conservation",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb12",
+   "prompt": "A parcel weighs somewhere between 4 and 6 kg. Does it exceed the 5 kg limit?",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 12,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  },
+  {
+   "id": "amb13",
+   "prompt": "A parcel weighs somewhere between 7 and 9 kg. Does it exceed the 8 kg limit?",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 13,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  },
+  {
+   "id": "amb14",
+   "prompt": "Sally has 2 apples and Johnny has 3. They want to give 9 people one whole apple each. Is that possible? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 14,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "no"
+   ],
+   "must_not_contain": [
+    "yes,"
+   ],
+   "ambiguity": "conservation",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb15",
+   "prompt": "A parcel weighs somewhere between 30 and 34 kg. Does it exceed the 8 kg limit? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 15,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "yes"
+   ],
+   "must_not_contain": [
+    "cannot determine"
+   ],
+   "ambiguity": "decision_irrelevant",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb16",
+   "prompt": "A parcel weighs somewhere between 3 and 8 kg. Does it exceed the 5 kg limit?",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 16,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  },
+  {
+   "id": "amb17",
+   "prompt": "Sally has 1 apples and Johnny has 2. They want to give 5 people one whole apple each. Is that possible? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 17,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "no"
+   ],
+   "must_not_contain": [
+    "yes,"
+   ],
+   "ambiguity": "conservation",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb18",
+   "prompt": "A parcel weighs somewhere between 7 and 9 kg. Does it exceed the 8 kg limit?",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 18,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  },
+  {
+   "id": "amb19",
+   "prompt": "A parcel weighs somewhere between 30 and 34 kg. Does it exceed the 5 kg limit? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 19,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "yes"
+   ],
+   "must_not_contain": [
+    "cannot determine"
+   ],
+   "ambiguity": "decision_irrelevant",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb20",
+   "prompt": "A parcel weighs somewhere between 4 and 6 kg. Does it exceed the 5 kg limit?",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 20,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  },
+  {
+   "id": "amb21",
+   "prompt": "A parcel weighs somewhere between 4 and 6 kg. Does it exceed the 5 kg limit?",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 21,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  },
+  {
+   "id": "amb22",
+   "prompt": "A parcel weighs somewhere between 7 and 9 kg. Does it exceed the 8 kg limit?",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 22,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  },
+  {
+   "id": "amb23",
+   "prompt": "A parcel weighs somewhere between 30 and 34 kg. Does it exceed the 8 kg limit? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 23,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "yes"
+   ],
+   "must_not_contain": [
+    "cannot determine"
+   ],
+   "ambiguity": "decision_irrelevant",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb24",
+   "prompt": "A parcel weighs somewhere between 7 and 9 kg. Does it exceed the 8 kg limit?",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 24,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  },
+  {
+   "id": "amb25",
+   "prompt": "A parcel weighs somewhere between 10 and 12 kg. Does it exceed the 5 kg limit? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 25,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "yes"
+   ],
+   "must_not_contain": [
+    "cannot determine"
+   ],
+   "ambiguity": "decision_irrelevant",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb26",
+   "prompt": "Sally has 2 apples and Johnny has 3. They want to give 6 people one whole apple each. Is that possible? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 26,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "no"
+   ],
+   "must_not_contain": [
+    "yes,"
+   ],
+   "ambiguity": "conservation",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb27",
+   "prompt": "Sally has 3 apples and Johnny has 3. They want to give 8 people one whole apple each. Is that possible? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 27,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "no"
+   ],
+   "must_not_contain": [
+    "yes,"
+   ],
+   "ambiguity": "conservation",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb28",
+   "prompt": "A parcel weighs somewhere between 4 and 6 kg. Does it exceed the 5 kg limit?",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 28,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  },
+  {
+   "id": "amb29",
+   "prompt": "Sally has 3 apples and Johnny has 3. They want to give 10 people one whole apple each. Is that possible? Answer yes or no.",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 29,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "no"
+   ],
+   "must_not_contain": [
+    "yes,"
+   ],
+   "ambiguity": "conservation",
+   "expect_level": "R"
+  },
+  {
+   "id": "amb30",
+   "prompt": "A parcel weighs somewhere between 4 and 6 kg. Does it exceed the 5 kg limit?",
+   "family": "ambiguous",
+   "phase": "mature",
+   "episode": 30,
+   "scorer": "general",
+   "ood": false,
+   "expect_any": [
+    "depends",
+    "cannot",
+    "not enough",
+    "need",
+    "which",
+    "unknown",
+    "clarif",
+    "either",
+    "may or may not",
+    "might"
+   ],
+   "ambiguity": "decision_relevant",
+   "expect_level": "K"
+  }
+ ],
+ "ood": [
+  {
+   "id": "ood1",
+   "prompt": "A $200 item is 20% off, then 10% tax is added. What is the final price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 1,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "176",
+    "176"
+   ],
+   "must_not_contain": [
+    "$160."
+   ],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood2",
+   "prompt": "An item costs -$100 and is 10% off. What is the sale price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 2,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "negative",
+    "invalid",
+    "cannot",
+    "doesn't make sense",
+    "does not make sense",
+    "not valid",
+    "error"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood3",
+   "prompt": "Split 800 dollars equally among 0 people. How much does each get?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 3,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "cannot",
+    "undefined",
+    "zero people",
+    "no one",
+    "not possible",
+    "impossible",
+    "division by zero"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood4",
+   "prompt": "An item costs -$400 and is 20% off. What is the sale price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 4,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "negative",
+    "invalid",
+    "cannot",
+    "doesn't make sense",
+    "does not make sense",
+    "not valid",
+    "error"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood5",
+   "prompt": "What is 20% of 600 kilograms, expressed in pounds?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 5,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "264.6",
+    "264.55",
+    "265"
+   ],
+   "must_not_contain": [
+    " 120 pounds",
+    "120 lb"
+   ],
+   "operator": "percent_of",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood6",
+   "prompt": "An item costs -$300 and is 10% off. What is the sale price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 6,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "negative",
+    "invalid",
+    "cannot",
+    "doesn't make sense",
+    "does not make sense",
+    "not valid",
+    "error"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood7",
+   "prompt": "A $100 item is 20% off, then 10% tax is added. What is the final price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 7,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "88",
+    "88"
+   ],
+   "must_not_contain": [
+    "$80."
+   ],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood8",
+   "prompt": "An item costs -$100 and is 10% off. What is the sale price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 8,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "negative",
+    "invalid",
+    "cannot",
+    "doesn't make sense",
+    "does not make sense",
+    "not valid",
+    "error"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood9",
+   "prompt": "Split 500 dollars equally among 0 people. How much does each get?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 9,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "cannot",
+    "undefined",
+    "zero people",
+    "no one",
+    "not possible",
+    "impossible",
+    "division by zero"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood10",
+   "prompt": "A $300 item is 10% off, then 10% tax is added. What is the final price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 10,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "297",
+    "297"
+   ],
+   "must_not_contain": [
+    "$270."
+   ],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood11",
+   "prompt": "An item costs -$500 and is 10% off. What is the sale price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 11,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "negative",
+    "invalid",
+    "cannot",
+    "doesn't make sense",
+    "does not make sense",
+    "not valid",
+    "error"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood12",
+   "prompt": "A $400 item is 20% off, then 5% tax is added. What is the final price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 12,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "336",
+    "336"
+   ],
+   "must_not_contain": [
+    "$320."
+   ],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood13",
+   "prompt": "A $100 item is 10% off, then 10% tax is added. What is the final price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 13,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "99",
+    "99"
+   ],
+   "must_not_contain": [
+    "$90."
+   ],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood14",
+   "prompt": "What is 10% of 500 kilograms, expressed in pounds?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 14,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "110.2",
+    "110.23",
+    "110"
+   ],
+   "must_not_contain": [
+    " 50 pounds",
+    "50 lb"
+   ],
+   "operator": "percent_of",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood15",
+   "prompt": "An item costs -$500 and is 20% off. What is the sale price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 15,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "negative",
+    "invalid",
+    "cannot",
+    "doesn't make sense",
+    "does not make sense",
+    "not valid",
+    "error"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood16",
+   "prompt": "What is 20% of 700 kilograms, expressed in pounds?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 16,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "308.6",
+    "308.65",
+    "309"
+   ],
+   "must_not_contain": [
+    " 140 pounds",
+    "140 lb"
+   ],
+   "operator": "percent_of",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood17",
+   "prompt": "Split 700 dollars equally among 0 people. How much does each get?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 17,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "cannot",
+    "undefined",
+    "zero people",
+    "no one",
+    "not possible",
+    "impossible",
+    "division by zero"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood18",
+   "prompt": "What is 25% of 200 kilograms, expressed in pounds?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 18,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "110.2",
+    "110.23",
+    "110"
+   ],
+   "must_not_contain": [
+    " 50 pounds",
+    "50 lb"
+   ],
+   "operator": "percent_of",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood19",
+   "prompt": "Split 700 dollars equally among 0 people. How much does each get?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 19,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "cannot",
+    "undefined",
+    "zero people",
+    "no one",
+    "not possible",
+    "impossible",
+    "division by zero"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood20",
+   "prompt": "An item costs -$500 and is 10% off. What is the sale price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 20,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "negative",
+    "invalid",
+    "cannot",
+    "doesn't make sense",
+    "does not make sense",
+    "not valid",
+    "error"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood21",
+   "prompt": "A $400 item is 10% off, then 5% tax is added. What is the final price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 21,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "378",
+    "378"
+   ],
+   "must_not_contain": [
+    "$360."
+   ],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood22",
+   "prompt": "What is 20% of 700 kilograms, expressed in pounds?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 22,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "308.6",
+    "308.65",
+    "309"
+   ],
+   "must_not_contain": [
+    " 140 pounds",
+    "140 lb"
+   ],
+   "operator": "percent_of",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood23",
+   "prompt": "A $300 item is 20% off, then 10% tax is added. What is the final price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 23,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "264",
+    "264"
+   ],
+   "must_not_contain": [
+    "$240."
+   ],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood24",
+   "prompt": "A $400 item is 10% off, then 10% tax is added. What is the final price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 24,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "396",
+    "396"
+   ],
+   "must_not_contain": [
+    "$360."
+   ],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood25",
+   "prompt": "An item costs -$500 and is 20% off. What is the sale price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 25,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "negative",
+    "invalid",
+    "cannot",
+    "doesn't make sense",
+    "does not make sense",
+    "not valid",
+    "error"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood26",
+   "prompt": "Split 300 dollars equally among 0 people. How much does each get?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 26,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "cannot",
+    "undefined",
+    "zero people",
+    "no one",
+    "not possible",
+    "impossible",
+    "division by zero"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood27",
+   "prompt": "What is 10% of 400 kilograms, expressed in pounds?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 27,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "88.2",
+    "88.18",
+    "88"
+   ],
+   "must_not_contain": [
+    " 40 pounds",
+    "40 lb"
+   ],
+   "operator": "percent_of",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood28",
+   "prompt": "An item costs -$500 and is 10% off. What is the sale price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 28,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "negative",
+    "invalid",
+    "cannot",
+    "doesn't make sense",
+    "does not make sense",
+    "not valid",
+    "error"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood29",
+   "prompt": "An item costs -$300 and is 20% off. What is the sale price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 29,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "negative",
+    "invalid",
+    "cannot",
+    "doesn't make sense",
+    "does not make sense",
+    "not valid",
+    "error"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  },
+  {
+   "id": "ood30",
+   "prompt": "An item costs -$200 and is 10% off. What is the sale price?",
+   "family": "ood",
+   "phase": "mature",
+   "episode": 30,
+   "scorer": "general",
+   "ood": true,
+   "expect_any": [
+    "negative",
+    "invalid",
+    "cannot",
+    "doesn't make sense",
+    "does not make sense",
+    "not valid",
+    "error"
+   ],
+   "must_not_contain": [],
+   "operator": "discount",
+   "expect_level": "K"
+  }
+ ]
+}

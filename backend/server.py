@@ -56,6 +56,13 @@ def _set_progress(state, detail=''):
     _PROGRESS['state'] = state
     _PROGRESS['detail'] = detail
     _PROGRESS['since'] = time.time()
+    # Stage boundaries double as trace segment boundaries (router /
+    # retrieval / queue / generation / tool time) for the current task.
+    try:
+        from cognition import trace as _trace
+        _trace.stage(state)
+    except Exception:
+        pass
 
 # Cosine-similarity score above which retrieved sources ground the answer.
 # BGE cosine scores have a high floor: unrelated query/passage pairs still
@@ -1489,6 +1496,40 @@ def create_app():
             pass
         return None
 
+    # ---- Task trace lifecycle (instrumentation, not debug output) --------
+    # One TaskTrace per /query: begun before routing, finished after the
+    # choke point so it records the FINAL answer state. Registered before
+    # _redact_response so Flask (reverse order) runs it after the veto.
+    @app.before_request
+    def _trace_begin():
+        if request.path in ('/query', '/query/plain') and request.method == 'POST':
+            try:
+                from cognition import trace as _trace
+                body = request.get_json(silent=True) or {}
+                rid = str(body.get('client_request_id') or '').strip() or f"t{int(time.time()*1000)}"
+                mode = 'plain' if request.path == '/query/plain' else \
+                    str(body.get('mode') or os.environ.get('TWHYNE_MODE', 'current')).strip().lower()
+                _trace.begin(rid, body.get('prompt', ''), mode)
+            except Exception:
+                pass
+
+    @app.after_request
+    def _trace_finish(resp):
+        if request.path in ('/query', '/query/plain') and request.method == 'POST':
+            try:
+                from cognition import trace as _trace
+                t = _trace.current()
+                if t is not None:
+                    data = resp.get_json(silent=True) if resp.is_json else None
+                    summary = t.finish(data if isinstance(data, dict) else {})
+                    if isinstance(data, dict):
+                        data['trace'] = summary
+                        resp.set_data(json.dumps(data))
+                    _trace.end()
+            except Exception:
+                pass
+        return resp
+
     @app.after_request
     def _redact_response(resp):
         # Single choke point: every /query answer passes through here,
@@ -1742,6 +1783,45 @@ def create_app():
             "belong in a knowledge base.",
         ]
         return '\n'.join(lines)
+
+    @app.route('/query/plain', methods=['POST', 'OPTIONS'])
+    def submit_query_plain():
+        """Benchmark condition A: the bare local model. No deterministic
+        shortcuts, no retrieval, no cache, no routing, no competencies - the
+        raw prompt goes straight to the language node. Exists so the
+        architecture's contribution can be measured against the model alone
+        on the same hardware. The choke point (redaction / conservation
+        veto) still applies: it is a safety property, not an architecture
+        feature, and it must never be switchable off."""
+        if request.method == 'OPTIONS':
+            return '', 200
+        blocked, lic_msg = _license_blocked()
+        if blocked:
+            return jsonify({'error': lic_msg, 'license_invalid': True}), 403
+        data = request.get_json(silent=True) or {}
+        prompt = (data.get('prompt') or '').strip()
+        if not prompt:
+            return jsonify({'error': 'No prompt provided'}), 400
+        client_rid = str(data.get('client_request_id', '') or '').strip()
+        from flux_nodes.base import Query
+        lang = node_registry.get_node('language-mistral-7b')
+        if not lang or not lang.is_available:
+            return jsonify({'error': 'language node unavailable'}), 503
+        from cognition import trace as _trace
+        _trace.note(level='K', tier=3, selected='plain-model', why='condition A: bare model')
+        q = Query(id=f"plain_{int(time.time() * 1000)}", text=prompt,
+                  parameters={'client_request_id': client_rid, 'max_tokens': 900},
+                  history=[])
+        _set_progress('queued', 'plain model')
+        with _INFER_LOCK:
+            if _is_cancelled(client_rid):
+                return jsonify({'cancelled': True}), 409
+            _set_progress('generating', 'plain model')
+            response = lang.process(q)
+        _set_progress('idle')
+        return jsonify({'result': response.text, 'response': response.text,
+                        'node_id': lang.node_id, 'sources': [], 'grounded': False,
+                        'gates': {'verdict': 'answered', 'how': 'generated'}})
 
     @app.route('/query', methods=['POST', 'OPTIONS'])
     def submit_query():

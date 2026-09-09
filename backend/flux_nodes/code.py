@@ -191,6 +191,8 @@ class CodeNode(FluxNode):
             toks = (response.get('usage') or {}).get('completion_tokens', 0)
             logger.info(f"Code generation: {toks} tokens in {dt:.0f}s "
                         f"({toks/dt:.1f} tok/s)" if dt > 0 else "")
+            from cognition import trace as _trace
+            _trace.model_call(self.node_id, response.get('usage'), dt)
         except Exception:
             pass
         return response['choices'][0]['text'].strip()
