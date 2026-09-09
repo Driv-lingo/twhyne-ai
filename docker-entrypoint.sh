@@ -33,10 +33,21 @@ RESP=$(curl -s -X POST "$API_URL/api/validate" \
 
 if echo "$RESP" | grep -qE '"valid"[[:space:]]*:[[:space:]]*true'; then
     echo "License valid."
-else
-    echo "ERROR: License validation failed."
+elif echo "$RESP" | grep -qE '"valid"[[:space:]]*:[[:space:]]*false'; then
+    # An EXPLICIT rejection from the license server: revoked / expired /
+    # unknown key. Fail closed.
+    echo "ERROR: License rejected by the license server."
     echo "Response: $RESP"
     exit 1
+else
+    # No usable answer (offline, DNS, our web host down, an HTML error page).
+    # A local-first product must not lock a customer out of their own
+    # machine because OUR website is unreachable. Start anyway; the
+    # runtime's own periodic heartbeat re-checks and enforces licensing
+    # with the normal grace window once the server is reachable again.
+    echo "WARNING: license server gave no usable answer (offline or an error page)."
+    echo "Starting in local mode; licensing is re-checked by the runtime heartbeat."
+    echo "Response (first 200 chars): $(printf '%s' "$RESP" | head -c 200)"
 fi
 
 # SIGNALS: this script is PID 1, and PID 1 gets no default signal handling -
