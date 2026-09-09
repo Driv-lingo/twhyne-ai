@@ -11,7 +11,7 @@
 # server.py stays bytecode (it is the Flask entrypoint; compiling the whole
 # app as one binary is the next rung, gated behind this proving out).
 
-FROM python:3.11-bullseye AS build
+FROM python:3.11-bookworm AS build
 WORKDIR /app
 RUN pip install --no-cache-dir nuitka==2.4.8 "numpy<2"
 COPY backend/ /app/backend/

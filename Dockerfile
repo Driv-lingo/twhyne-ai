@@ -4,7 +4,7 @@
 # + static frontend (3000).
 
 # ---- Stage 1: build the React frontend ----
-FROM node:18-bullseye AS frontend
+FROM node:18-bookworm AS frontend
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm install
@@ -12,7 +12,10 @@ COPY frontend/ ./
 RUN npm run build
 
 # ---- Stage 2: python runtime with the AI engine ----
-FROM python:3.11-bullseye
+# bookworm, not bullseye: Debian 11 left LTS on 2026-08-31 and its apt
+# repositories moved to the archive, so `apt-get update` on a bullseye base
+# exits 100 and every image build fails before any application code runs.
+FROM python:3.11-bookworm
 WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1

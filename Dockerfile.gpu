@@ -6,7 +6,7 @@
 # GPU minutes per docs/GPU_VALIDATION.md before any release is announced.
 
 # ---- Stage 1: build the React frontend (identical to CPU image) ----
-FROM node:18-bullseye AS frontend
+FROM node:18-bookworm AS frontend
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm install
