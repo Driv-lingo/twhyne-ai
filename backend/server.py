@@ -1513,6 +1513,66 @@ def create_app():
             except Exception:
                 pass
 
+    # ---- Cognition gate (condition D only): Tier-0 competency execution ---
+    # Runs BEFORE submit_query. If a promoted (R/S) competency structurally
+    # matches the prompt AND both independent guards pass, the answer is
+    # computed deterministically and the model is never invoked. Anything
+    # less - candidate-only, guard disagreement, conflict, staleness,
+    # envelope violation - falls through to the full pipeline (K).
+    @app.before_request
+    def _competency_gate():
+        if request.path != '/query' or request.method != 'POST':
+            return None
+        try:
+            from cognition import trace as _trace, runtime as _rt
+            t = _trace.current()
+            mode = t.mode if t else 'current'
+            if not _rt.mode_active(mode):
+                return None
+            body = request.get_json(silent=True) or {}
+            prompt = (body.get('prompt') or '').strip()
+            if not prompt or body.get('use_rag') or body.get('dataset_id'):
+                return None
+            ctl = _rt.get_controller()
+            sel = ctl.select(prompt)
+            _trace.note(candidates=sel.candidates, guards=sel.guards,
+                        escalation=sel.escalation)
+            if t:
+                t.add('router_s', sel.router_s)
+            if sel.competency is None or mode != 'full':
+                return None                      # K: continue into the pipeline
+            res = ctl.execute(sel, prompt)
+            if not res.get('ok'):
+                _trace.note(escalation=f"{sel.competency.id}: {res.get('why')} -> K")
+                return None
+            if t:
+                t.add('tool_s', res['exec_s']); t.add('verification_s', res['verify_s'])
+            _trace.note(level=res['level'], tier=0, selected=res['competency'],
+                        why=f"both guards passed; {res['level']}-level execution")
+            val = res['result']
+            shown = f"{val:.2f}".rstrip('0').rstrip('.') if isinstance(val, float) else str(val)
+            text = (f"{shown}\n\nComputed by a verified competency "
+                    f"({sel.competency.name}, level {res['level']}) — executed and "
+                    f"checked deterministically; no model was used.")
+            return jsonify({'result': text, 'response': text,
+                            'node_id': f"competency:{res['competency']}", 'sources': [],
+                            'grounded': False,
+                            # provenance in its own field: the redaction choke
+                            # point normalises `gates` and must not erase it
+                            'competency': {'id': res['competency'], 'name': sel.competency.name,
+                                           'level': res['level'], 'signature': res['signature'],
+                                           'tier': 0},
+                            'gates': {'verdict': 'answered', 'how': 'computed',
+                                      'competency': res['competency'], 'level': res['level']},
+                            'verification': {'V_A': 'both guards passed',
+                                             'V_L': ('deterministic execution + '
+                                                     + ('full' if res['level'] == 'R' else 'light')
+                                                     + ' verification'),
+                                             'V_G': 'n/a (no sources needed)', 'V_U': 'answered'}})
+        except Exception as e:
+            logger.warning(f"competency gate error (falling through to K): {e}")
+            return None
+
     @app.after_request
     def _trace_finish(resp):
         if request.path in ('/query', '/query/plain') and request.method == 'POST':
@@ -1529,6 +1589,45 @@ def create_app():
                     _trace.end()
             except Exception as e:  # instrumentation must never break a request
                 logger.warning(f"trace finish failed: {e}")
+        return resp
+
+    # ---- Post-K hook (conditions C and D): verification dimensions +
+    # (D only) competency induction from the verified K answer. Registered
+    # between _trace_finish and _redact_response so it runs AFTER the
+    # choke point (sees the final, possibly withheld answer) and BEFORE the
+    # trace is finalised.
+    @app.after_request
+    def _post_k(resp):
+        if request.path != '/query' or request.method != 'POST' or not resp.is_json:
+            return resp
+        try:
+            from cognition import trace as _trace, runtime as _rt
+            t = _trace.current()
+            mode = t.mode if t else 'current'
+            if not _rt.mode_active(mode) or (t and t.level in ('R', 'S')):
+                return resp
+            data = resp.get_json(silent=True) or {}
+            if resp.status_code != 200 or data.get('cancelled') or data.get('error'):
+                return resp
+            body = request.get_json(silent=True) or {}
+            prompt = (body.get('prompt') or '').strip()
+            answer = data.get('response') or data.get('result') or ''
+            refused = bool(data.get('node_denied')) or \
+                ((data.get('gates') or {}).get('verdict') == 'refused' if isinstance(data.get('gates'), dict) else False) \
+                or bool(data.get('quantity_upper_bound_violation'))
+            k_cost = sum(m.gen_s for m in t.model_calls) if t else 0.0
+            import json as _json
+            dims = _rt.get_controller().post_k(prompt, answer, k_cost, mode,
+                                               grounded=bool(data.get('grounded')), refused=refused)
+            _trace.note(level='K', tier=(3 if (t and t.model_calls) else 1),
+                        why=(t.why if t and t.why else 'no applicable competency; general path'))
+            data['verification'] = {k: v for k, v in dims.items() if k != 'induction'}
+            if dims.get('induction'):
+                data['verification']['induction'] = {k: dims['induction'][k]
+                                                     for k in ('competency', 'level', 'successes', 'failures')}
+            resp.set_data(_json.dumps(data))
+        except Exception as e:
+            logger.warning(f"post-K hook error: {e}")
         return resp
 
     @app.after_request
