@@ -1517,6 +1517,7 @@ def create_app():
     def _trace_finish(resp):
         if request.path in ('/query', '/query/plain') and request.method == 'POST':
             try:
+                import json as _json
                 from cognition import trace as _trace
                 t = _trace.current()
                 if t is not None:
@@ -1524,10 +1525,10 @@ def create_app():
                     summary = t.finish(data if isinstance(data, dict) else {})
                     if isinstance(data, dict):
                         data['trace'] = summary
-                        resp.set_data(json.dumps(data))
+                        resp.set_data(_json.dumps(data))
                     _trace.end()
-            except Exception:
-                pass
+            except Exception as e:  # instrumentation must never break a request
+                logger.warning(f"trace finish failed: {e}")
         return resp
 
     @app.after_request
