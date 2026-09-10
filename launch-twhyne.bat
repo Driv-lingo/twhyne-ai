@@ -109,6 +109,20 @@ REM multi-minute swap between code and chat questions.
 if "%TWHYNE_MEM%"=="" set TWHYNE_MEM=12g
 if "%TWHYNE_MAX_RESIDENT%"=="" set TWHYNE_MAX_RESIDENT=1
 
+REM -- Disk preflight -------------------------------------------
+REM Docker's VM lives in a virtual disk on C:. When C: fills, the VM
+REM cannot grow the disk and dies mid-write with no message - the same
+REM silent "unexpected EOF" as running out of memory.
+set FREE_GB=
+for /f "usebackq delims=" %%f in (`powershell -NoProfile -Command "[math]::Floor((Get-PSDrive C).Free / 1GB)"`) do set FREE_GB=%%f
+if defined FREE_GB if !FREE_GB! LSS 10 (
+    echo.
+    echo WARNING: only !FREE_GB! GB free on C:. Docker's VM needs room to grow
+    echo   or it will stop without warning. Free up space ^(docker system prune,
+    echo   or move Docker's disk image in Settings ^> Resources ^> Advanced^).
+    echo.
+)
+
 REM -- Fit the limit to the Docker VM ---------------------------
 REM Docker Desktop runs containers inside a fixed-size Linux VM (default:
 REM half of host RAM). A -m limit LARGER than the VM is not enforced by
